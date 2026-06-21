@@ -28,7 +28,19 @@
             <div class="bg-white border rounded-xl shadow-sm p-6">
                 <h3 class="font-bold text-gray-800 border-b pb-2 mb-4">محتوای گزارش ارسالی در ربات</h3>
 
-                @php $data = is_array($report->data) ? $report->data : []; @endphp
+                @php
+                    $rawData = is_array($report->data) ? $report->data : [];
+                    // تبدیل فرمت قدیم {field_id: value} به flat array اگر لازم باشد
+                    if (!empty($rawData) && !isset($rawData[0])) {
+                        $legacyData = [];
+                        foreach ($rawData as $fieldId => $value) {
+                            $legacyData[] = ['field_id' => (int)$fieldId, 'label' => "فیلد {$fieldId}", 'type' => 'text', 'value' => $value];
+                        }
+                        $data = $legacyData;
+                    } else {
+                        $data = $rawData;
+                    }
+                @endphp
 
                 @if(empty($data))
                     <p class="text-gray-400 text-sm">داده‌ای ثبت نشده.</p>
