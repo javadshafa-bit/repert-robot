@@ -1,0 +1,152 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\Category;
+use App\Models\CategoryField;
+use App\Models\FieldOption;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+
+class CategoryController extends Controller
+{
+    public function index()
+    {
+        $categories = Category::withCount('fields')->orderBy('sort_order')->get();
+        return view('admin.categories.index', compact('categories'));
+    }
+
+    public function create()
+    {
+        return view('admin.categories.create');
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name'       => 'required|string|max:100',
+            'sort_order' => 'integer|min:0',
+        ]);
+
+        $category = Category::create([
+            'name'       => $request->name,
+            'sort_order' => $request->sort_order ?? 0,
+            'is_active'  => $request->boolean('is_active', true),
+        ]);
+
+        return redirect()->route('admin.categories.edit', $category)
+            ->with('success', 'دسته‌بندی ساخته شد. حالا فیلدها را اضافه کنید.');
+    }
+
+    public function edit(Category $category)
+    {
+        $category->load(['fields' => function ($q) {
+            $q->whereNull('parent_option_id')
+              ->orderBy('sort_order')
+              ->with($this->fieldEagerLoad());
+        }]);
+        return view('admin.categories.edit', compact('category'));
+    }
+
+    private function fieldEagerLoad(): array
+    {
+        // eager load چند سطح عمق
+        return ['options.childFields.options.childFields.options.childFields'];
+    }
+
+    public function update(Request $request, Category $category)
+    {
+        $request->validate([
+            'name'       => 'required|string|max:100',
+            'sort_order' => 'integer|min:0',
+        ]);
+
+        $category->update([
+            'name'       => $request->name,
+            'sort_order' => $request->sort_order ?? 0,
+            'is_active'  => $request->boolean('is_active'),
+        ]);
+
+        return back()->with('success', 'دسته‌بندی با موفقیت ویرایش شد.');
+    }
+
+    public function destroy(Category $category)
+    {
+        $category->delete();
+        return back()->with('success', 'دسته‌بندی حذف شد.');
+    }
+
+    // ==========================================
+    // Fields
+    // ==========================================
+
+    public function storeField(Request $request, Category $category)
+    {
+        $request->validate([
+            'label'            => 'required|string|max:100',
+            'description'      => 'nullable|string|max:255',
+            'sort_order'       => 'integer|min:0',
+            'parent_option_id' => 'nullable|exists:field_options,id',
+            'type'             => ['required', 'string', Rule::in(['text', 'option', 'photo', 'link'])],
+        ]);
+
+        $category->fields()->create([
+            'parent_option_id' => $request->parent_option_id ?: null,
+            'label'            => $request->label,
+            'description'      => $request->description,
+            'sort_order'       => $request->sort_order ?? 0,
+            'type'             => $request->type,
+            'is_required'      => $request->boolean('is_required', true),
+            'is_multiple'      => $request->boolean('is_multiple', false),
+        ]);
+
+        return back()->with('success', 'فیلد اضافه شد.');
+    }
+
+    public function updateField(Request $request, Category $category, CategoryField $field)
+    {
+        $request->validate([
+            'label'       => 'required|string|max:100',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $field->update([
+            'label'       => $request->label,
+            'description' => $request->description,
+            'is_required' => $request->boolean('is_required'),
+            'is_multiple' => $request->boolean('is_multiple'),
+        ]);
+
+        return back()->with('success', 'فیلد ویرایش شد.');
+    }
+
+    public function destroyField(Category $category, CategoryField $field)
+    {
+        $field->delete();
+        return back()->with('success', 'فیلد حذف شد.');
+    }
+
+    // ==========================================
+    // Options
+    // ==========================================
+
+    public function storeOption(Request $request, Category $category, CategoryField $field)
+    {
+        $request->validate(['label' => 'required|string|max:100']);
+
+        $field->options()->create([
+            'label'      => $request->label,
+            'sort_order' => $field->options()->count(),
+        ]);
+
+        return back()->with('success', 'گزینه اضافه شد.');
+    }
+
+    public function destroyOption(Category $category, CategoryField $field, FieldOption $option)
+    {
+        $option->delete();
+        return back()->with('success', 'گزینه حذف شد.');
+    }
+}

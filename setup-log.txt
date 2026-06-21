@@ -1,0 +1,10 @@
+C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe
+PHP 8.3.30 (cli) (built: Jan 13 2026 22:50:40) (ZTS Visual C++ 2019 x64)
+Copyright (c) The PHP Group
+Zend Engine v4.3.30, Copyright (c) Zend Technologies
+C:\laragon\bin\composer\composer
+C:\laragon\bin\composer\composer.bat
+C:\laragon\usr\bin\composer.bat
+Composer version 2.9.4 2026-01-22 14:08:50
+PHP version 8.3.30 (C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe)
+Run the "diagnose" command to get more detailed diagnostics output.
