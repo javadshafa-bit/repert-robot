@@ -116,7 +116,7 @@ class BotController extends Controller
     private function getFlowSteps(): array
     {
         $stored = Setting::get('bot_flow_steps');
-        if ($stored) { $decoded = json_decode($stored, true); if (is_array($decoded) && count($decoded) === 3) return $decoded; }
+        if ($stored) { $decoded = json_decode($stored, true); if (is_array($decoded) && count($decoded) >= 1) return $decoded; }
         return ['month', 'department', 'category'];
     }
 

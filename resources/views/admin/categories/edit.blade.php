@@ -115,26 +115,10 @@
         </div>
 
         {{-- درخت فیلدها --}}
-        <div class="bg-white border rounded-xl shadow-sm overflow-hidden">
-            <div class="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-gray-700">
-                    ساختار درخت فیلدها — {{ $category->fields->count() }} فیلد سطح اول
-                </h3>
-            </div>
-
-            @if($category->fields->isEmpty())
-                <div class="px-4 py-10 text-center text-sm text-gray-400">هنوز فیلدی تعریف نشده</div>
-            @else
-                <div class="p-4 space-y-3">
-                    @foreach($category->fields as $field)
-                        @include('admin.categories._field_node', [
-                            'field'    => $field,
-                            'category' => $category,
-                            'depth'    => 0,
-                        ])
-                    @endforeach
-                </div>
-            @endif
+        <div id="tree-container"
+             class="bg-white border rounded-xl shadow-sm overflow-hidden"
+             data-tree-url="{{ route('admin.categories.tree-fragment', $category) }}">
+            @include('admin.categories._tree_fragment', ['category' => $category])
         </div>
 
     </div>
@@ -142,10 +126,165 @@
 @endsection
 
 @push('scripts')
+<style>
+/* ─── Visual Tree CSS ───────────────────────────────────────────── */
+.vtree-wrap { padding: 1.5rem 1rem; overflow-x: auto; min-height: 80px; }
+
+.vtree, .vtree ul {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; justify-content: center;
+}
+.vtree ul {
+    padding-top: 24px;
+    position: relative;
+}
+/* خط عمودی از والد به سطر فرزندان */
+.vtree ul::before {
+    content: '';
+    position: absolute; top: 0; left: 50%;
+    height: 24px; border-left: 2px solid #d1d5db;
+}
+.vtree li {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 0 6px; position: relative;
+}
+/* خطوط افقی بین برادرها */
+.vtree li::before, .vtree li::after {
+    content: ''; position: absolute; top: 0;
+    border-top: 2px solid #d1d5db; width: 50%;
+}
+.vtree li::before { right: 50%; }
+.vtree li::after  { left: 50%; }
+.vtree li:first-child::before,
+.vtree li:last-child::after { display: none; }
+/* اگه فرزند یکیه خطوط افقی لازم نیست */
+.vtree li:only-child::before,
+.vtree li:only-child::after { display: none; }
+
+/* ─── Nodes ─── */
+.vtree-node {
+    position: relative; z-index: 1;
+    border: 1.5px solid; border-radius: 10px;
+    text-align: center; max-width: 130px; min-width: 72px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    padding: 5px 10px; cursor: default;
+}
+.vtree-option-node {
+    border-radius: 99px !important;
+    padding: 3px 12px !important;
+    background: #fff7ed; border-color: #fb923c; color: #9a3412;
+}
+.vtree-badge  { display: block; font-size: 9px; opacity: .6; margin-bottom: 1px; }
+.vtree-label  { display: block; font-size: 11px; font-weight: 600;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* نوع فیلد → رنگ */
+.vtree-type-option { background:#f5f3ff; border-color:#a78bfa; color:#5b21b6; }
+.vtree-type-text   { background:#f9fafb; border-color:#9ca3af; color:#374151; }
+.vtree-type-photo  { background:#eff6ff; border-color:#60a5fa; color:#1d4ed8; }
+.vtree-type-link   { background:#f0fdf4; border-color:#4ade80; color:#15803d; }
+
+/* ─── View toggle buttons ─── */
+.tree-view-btn {
+    background: #fff; color: #6b7280;
+    border: 1px solid #e5e7eb;
+}
+.tree-view-btn.active {
+    background: #4f46e5; color: #fff;
+    border-color: #4f46e5;
+}
+</style>
+
 <script>
 function toggleEdit(id) {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('hidden');
 }
+
+// ─── Tree view toggle ────────────────────────────────────────────────────────
+let currentTreeView = 'visual';
+
+function setTreeView(mode) {
+    currentTreeView = mode;
+    const visual = document.getElementById('tree-visual-view');
+    const edit   = document.getElementById('tree-edit-view');
+    const btnV   = document.getElementById('btn-visual');
+    const btnE   = document.getElementById('btn-edit');
+    if (visual) visual.classList.toggle('hidden', mode !== 'visual');
+    if (edit)   edit.classList.toggle('hidden',   mode !== 'edit');
+    if (btnV)   btnV.classList.toggle('active', mode === 'visual');
+    if (btnE)   btnE.classList.toggle('active', mode === 'edit');
+}
+
+// ─── AJAX tree refresh ───────────────────────────────────────────────────────
+const treeContainer = document.getElementById('tree-container');
+const TREE_URL = treeContainer?.dataset.treeUrl;
+const CSRF = document.querySelector('meta[name="csrf-token"]')?.content
+          || document.querySelector('input[name="_token"]')?.value;
+
+async function refreshTree() {
+    if (!treeContainer || !TREE_URL) return;
+    treeContainer.style.opacity = '0.5';
+    try {
+        const res  = await fetch(TREE_URL, { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        treeContainer.innerHTML = data.html;
+        setTreeView(currentTreeView); // حفظ حالت فعلی
+    } finally {
+        treeContainer.style.opacity = '1';
+    }
+}
+
+function treeToast(msg, ok = true) {
+    const old = document.getElementById('tree-toast');
+    if (old) old.remove();
+    const el = document.createElement('div');
+    el.id = 'tree-toast';
+    el.style.cssText = `position:fixed;bottom:1.5rem;left:1.5rem;z-index:9999;
+        padding:.6rem 1.1rem;border-radius:.75rem;font-size:.85rem;font-weight:600;
+        box-shadow:0 8px 24px rgba(0,0,0,.15);color:#fff;
+        background:${ok ? '#10b981' : '#ef4444'};transition:opacity .3s`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2200);
+}
+
+// ─── Intercept tree form submissions ────────────────────────────────────────
+document.addEventListener('submit', async function (e) {
+    const form = e.target;
+    const inTree     = treeContainer?.contains(form);
+    const isRootForm = form.closest('.lg\\:col-span-2') && !treeContainer?.contains(form);
+    if (!inTree && !isRootForm) return;
+
+    // فرم مشخصات دسته (ستون چپ) رو رها کن
+    if (form.querySelector('input[name="name"]') && !form.querySelector('input[name="label"]')) return;
+
+    e.preventDefault();
+
+    const btn = form.querySelector('[type="submit"]');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+
+    try {
+        const res = await fetch(form.action, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(form),
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            treeToast('✅ ' + (data.message || 'انجام شد'));
+            if (isRootForm) form.reset();
+            await refreshTree();
+        } else {
+            const errs = data.errors ? Object.values(data.errors).flat().join(' | ') : (data.message || 'خطا');
+            treeToast('❌ ' + errs, false);
+            if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        }
+    } catch {
+        treeToast('❌ خطا در ارتباط با سرور', false);
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+});
 </script>
 @endpush

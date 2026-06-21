@@ -43,11 +43,15 @@ class SettingController extends Controller
     public function updateFlow(Request $request)
     {
         $request->validate([
-            'steps'   => 'required|array|size:3',
+            'steps'   => 'present|array|min:1|max:3',
             'steps.*' => 'required|string|in:month,department,category',
         ]);
 
-        Setting::set('bot_flow_steps', json_encode($request->steps));
+        // always keep category in the flow
+        $steps = array_values(array_unique($request->steps ?? []));
+        if (!in_array('category', $steps)) $steps[] = 'category';
+
+        Setting::set('bot_flow_steps', json_encode($steps));
 
         return response()->json(['success' => true]);
     }

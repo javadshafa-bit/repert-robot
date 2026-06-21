@@ -82,6 +82,20 @@ class CategoryController extends Controller
     // Fields
     // ==========================================
 
+    // returns refreshed tree HTML for AJAX calls
+    public function treeFragment(Category $category)
+    {
+        $category->load(['fields' => function ($q) {
+            $q->whereNull('parent_option_id')
+              ->orderBy('sort_order')
+              ->with($this->fieldEagerLoad());
+        }]);
+
+        $html = view('admin.categories._tree_fragment', compact('category'))->render();
+
+        return response()->json(['html' => $html, 'count' => $category->fields->count()]);
+    }
+
     public function storeField(Request $request, Category $category)
     {
         $request->validate([
@@ -102,6 +116,7 @@ class CategoryController extends Controller
             'is_multiple'      => $request->boolean('is_multiple', false),
         ]);
 
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد اضافه شد.']);
         return back()->with('success', 'فیلد اضافه شد.');
     }
 
@@ -119,12 +134,14 @@ class CategoryController extends Controller
             'is_multiple' => $request->boolean('is_multiple'),
         ]);
 
+        if (request()->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد ویرایش شد.']);
         return back()->with('success', 'فیلد ویرایش شد.');
     }
 
     public function destroyField(Category $category, CategoryField $field)
     {
         $field->delete();
+        if (request()->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد حذف شد.']);
         return back()->with('success', 'فیلد حذف شد.');
     }
 
@@ -141,12 +158,14 @@ class CategoryController extends Controller
             'sort_order' => $field->options()->count(),
         ]);
 
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'گزینه اضافه شد.']);
         return back()->with('success', 'گزینه اضافه شد.');
     }
 
     public function destroyOption(Category $category, CategoryField $field, FieldOption $option)
     {
         $option->delete();
+        if (request()->expectsJson()) return response()->json(['success' => true, 'message' => 'گزینه حذف شد.']);
         return back()->with('success', 'گزینه حذف شد.');
     }
 }

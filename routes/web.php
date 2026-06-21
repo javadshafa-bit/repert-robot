@@ -42,6 +42,7 @@ Route::middleware('admin.auth')->prefix('admin')->name('admin.')->group(function
     // دسته‌بندی و فرم‌ساز
     Route::middleware('admin.can:categories')->group(function () {
         Route::resource('categories', CategoryController::class);
+        Route::get('categories/{category}/tree-fragment',                                 [CategoryController::class, 'treeFragment'])->name('categories.tree-fragment');
         Route::post('categories/{category}/fields',                                        [CategoryController::class, 'storeField'])->name('categories.fields.store');
         Route::post('categories/{category}/fields/reorder',                                [CategoryController::class, 'reorderFields'])->name('categories.fields.reorder');
         Route::put('categories/{category}/fields/{field}',                                 [CategoryController::class, 'updateField'])->name('categories.fields.update');
