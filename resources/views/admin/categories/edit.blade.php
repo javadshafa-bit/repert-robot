@@ -142,8 +142,9 @@
 
     </div>
 </div>
+@endsection
 
-{{-- Vtree edit popover — باید داخل @section باشه تا در DOM رندر بشه --}}
+{{-- Vtree edit popover --}}
 <div id="vtree-popover"
      class="hidden fixed z-[999] bg-white border border-gray-200 rounded-xl shadow-2xl p-4 w-72"
      style="top:0;left:0;max-height:90vh;overflow-y:auto">
@@ -280,7 +281,6 @@
     </div>
 
 </div>
-@endsection
 
 @push('scripts')
 <style>
@@ -686,4 +686,16 @@ document.addEventListener('submit', async function (e) {
         }
     } catch {
         treeToast('❌ خطا در ارتباط با سرور', false);
-        if (btn) { btn.disa
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+});
+
+// اطمینان از اینکه popover مستقیم در body باشه (برای fixed positioning و view:cache)
+(function () {
+    const pop = document.getElementById('vtree-popover');
+    if (pop && pop.parentNode !== document.body) {
+        document.body.appendChild(pop);
+    }
+})();
+</script>
+@endpush
