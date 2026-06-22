@@ -49,6 +49,7 @@ Route::middleware('admin.auth')->prefix('admin')->name('admin.')->group(function
         Route::delete('categories/{category}/fields/{field}',                              [CategoryController::class, 'destroyField'])->name('categories.fields.destroy');
         // مدیریت گزینه‌های option fields
         Route::post('categories/{category}/fields/{field}/options',                        [CategoryController::class, 'storeOption'])->name('categories.fields.options.store');
+        Route::put('categories/{category}/fields/{field}/options/{option}',               [CategoryController::class, 'updateOption'])->name('categories.fields.options.update');
         Route::delete('categories/{category}/fields/{field}/options/{option}',             [CategoryController::class, 'destroyOption'])->name('categories.fields.options.destroy');
     });
 

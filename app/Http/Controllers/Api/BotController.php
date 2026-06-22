@@ -133,8 +133,8 @@ class BotController extends Controller
             if ($step === 'department' && !$state->department_id) { $state->update(['step' => 'selecting_department']); $this->askDepartment($chatId, $state); return; }
             if ($step === 'category'   && !$state->category_id)   { $state->update(['step' => 'selecting_category']);   $this->askCategory($chatId, $state);   return; }
         }
-        // ساختن صف از فیلدهای سطح اول
-        $category   = Category::with(['fields' => fn($q) => $q->whereNull('parent_option_id')->orderBy('sort_order')])->find($state->category_id);
+        // ساختن صف از فیلدهای سطح اول (بدون والد option یا والد field)
+        $category   = Category::with(['fields' => fn($q) => $q->whereNull('parent_option_id')->whereNull('parent_field_id')->orderBy('sort_order')])->find($state->category_id);
         $fieldQueue = $category->fields->pluck('id')->toArray();
         $state->update(['step' => 'answering_field', 'draft_data' => [], 'field_queue' => $fieldQueue]);
         $this->askNextField($chatId, $state);
@@ -161,6 +161,15 @@ class BotController extends Controller
     {
         $childIds = $option->childFields()->orderBy('sort_order')->pluck('id')->toArray();
         $state->update(['field_queue' => array_merge($childIds, $state->field_queue ?? [])]);
+    }
+
+    /** زیرفیلدهای همیشگی فیلد والد را به ابتدای صف اضافه می‌کند (بدون شرط) */
+    private function prependAlwaysChildFields(BotState $state, CategoryField $field): void
+    {
+        $childIds = $field->alwaysChildFields()->pluck('id')->toArray();
+        if (!empty($childIds)) {
+            $state->update(['field_queue' => array_merge($childIds, $state->field_queue ?? [])]);
+        }
     }
 
     // ==========================================
@@ -271,6 +280,9 @@ class BotController extends Controller
         $draft[] = ['field_id' => $option->field->id, 'label' => $option->field->label, 'type' => 'option', 'value' => $option->label, 'option_id' => $option->id];
 
         $this->popField($state);
+        // ترتیب: ابتدا alwaysChildFields فیلد والد، سپس childFields گزینه انتخابی
+        // نتیجه: [option_children, always_children, ...rest]
+        $this->prependAlwaysChildFields($state, $option->field);
         $this->prependOptionFields($state, $option);
         $state->update(['draft_data' => $draft]);
 
@@ -298,6 +310,7 @@ class BotController extends Controller
             $draft   = $state->draft_data ?? [];
             $draft[] = ['field_id' => $field->id, 'label' => $field->label, 'type' => $field->type, 'value' => $text];
             $this->popField($state);
+            $this->prependAlwaysChildFields($state, $field);
             $state->update(['draft_data' => $draft]);
             $this->deleteTrackedMessage($chatId, $state);
             $this->askNextField($chatId, $state);
@@ -327,6 +340,7 @@ class BotController extends Controller
             } else {
                 $draft[] = ['field_id' => $field->id, 'label' => $field->label, 'type' => $field->type, 'value' => $filePath];
                 $this->popField($state);
+                $this->prependAlwaysChildFields($state, $field);
             }
             $state->update(['draft_data' => $draft, 'step' => $isEditing ? 'preview' : 'answering_field']);
             $this->deleteTrackedMessage($chatId, $state);
@@ -373,7 +387,7 @@ class BotController extends Controller
 
         $this->deleteTrackedMessage($chatId, $state);
         if ($isEditing) { $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); }
-        else { $this->popField($state); $this->askNextField($chatId, $state); }
+        else { $this->popField($state); $this->prependAlwaysChildFields($state, $field); $this->askNextField($chatId, $state); }
     }
 
     private function saveEditedAnswer(string $chatId, string $text, BotState $state): void

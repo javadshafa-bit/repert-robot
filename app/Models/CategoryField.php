@@ -10,6 +10,7 @@ class CategoryField extends Model
     protected $fillable = [
         'category_id',
         'parent_option_id',
+        'parent_field_id',
         'label',
         'description',
         'sort_order',
@@ -40,10 +41,22 @@ class CategoryField extends Model
         return $this->belongsTo(FieldOption::class, 'parent_option_id');
     }
 
-    /** آیا فیلد سطح اول است؟ */
+    /** فیلدهایی که همیشه بعد از پاسخ دادن به این فیلد نمایش داده می‌شوند */
+    public function alwaysChildFields()
+    {
+        return $this->hasMany(CategoryField::class, 'parent_field_id')->orderBy('sort_order');
+    }
+
+    /** فیلد والدِ ثابت (اگر این فیلد زیرفیلد همیشگی یک فیلد دیگر باشد) */
+    public function parentField()
+    {
+        return $this->belongsTo(CategoryField::class, 'parent_field_id');
+    }
+
+    /** آیا فیلد سطح اول است؟ (هیچ والدی ندارد) */
     public function isTopLevel(): bool
     {
-        return is_null($this->parent_option_id);
+        return is_null($this->parent_option_id) && is_null($this->parent_field_id);
     }
 
     protected function typeFa(): Attribute
