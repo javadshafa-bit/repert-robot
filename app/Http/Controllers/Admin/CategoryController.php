@@ -137,7 +137,7 @@ class CategoryController extends Controller
             ]);
         }
 
-        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد اضافه شد.']);
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد اضافه شد.', 'field_id' => $field->id]);
         return back()->with('success', 'فیلد اضافه شد.');
     }
 

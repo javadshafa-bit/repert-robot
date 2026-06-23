@@ -9,7 +9,8 @@
     <div class="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">{{ session('success') }}</div>
 @endif
 
-<div class="grid lg:grid-cols-3 gap-6">
+{{-- ردیف بالا: مشخصات + فرم افزودن فیلد --}}
+<div class="grid lg:grid-cols-3 gap-6 mb-6">
 
     {{-- ستون چپ: مشخصات دسته --}}
     <div class="lg:col-span-1 space-y-4">
@@ -61,11 +62,9 @@
         </div>
     </div>
 
-    {{-- ستون راست: درخت فیلدها --}}
-    <div class="lg:col-span-2 space-y-4">
-
-        {{-- فرم افزودن فیلد سطح اول --}}
-        <div class="bg-gray-50 border rounded-xl shadow-sm p-5">
+    {{-- ستون راست: فرم افزودن فیلد سطح اول --}}
+    <div class="lg:col-span-2">
+        <div class="bg-gray-50 border rounded-xl shadow-sm p-5 h-full">
             <h3 class="text-base font-semibold mb-4 text-gray-800">افزودن فیلد سطح اول</h3>
             <form action="{{ route('admin.categories.fields.store', $category) }}" method="POST"
                   class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -131,16 +130,16 @@
                 </div>
             </form>
         </div>
-
-        {{-- درخت فیلدها --}}
-        <div id="tree-container"
-             class="bg-white border rounded-xl shadow-sm"
-             data-tree-url="{{ route('admin.categories.tree-fragment', $category) }}"
-             data-category-id="{{ $category->id }}">
-            @include('admin.categories._tree_fragment', ['category' => $category])
-        </div>
-
     </div>
+
+</div>
+
+{{-- ردیف پایین: درخت فیلدها — تمام عرض --}}
+<div id="tree-container"
+     class="bg-white border rounded-xl shadow-sm w-full"
+     data-tree-url="{{ route('admin.categories.tree-fragment', $category) }}"
+     data-category-id="{{ $category->id }}">
+    @include('admin.categories._tree_fragment', ['category' => $category])
 </div>
 @endsection
 
@@ -298,13 +297,14 @@
 <style>
 /* ─── Visual Tree CSS ───────────────────────────────────────────── */
 .vtree-wrap {
-    padding: 2rem 3rem 2.5rem;   /* چپ/راست بیشتر تا گره‌ها از لبه فاصله داشته باشند */
+    padding: 2rem 3rem 3rem;
     overflow-x: auto;
-    overflow-y: visible;
-    min-height: 100px;
-    /* اسکرول‌بار همیشه نمایش داده شود تا کاربر بداند scroll وجود دارد */
+    overflow-y: auto;
+    min-height: 500px;
+    max-height: 75vh;
     scrollbar-width: thin;
     scrollbar-color: #c7d2fe #f3f4f6;
+    cursor: grab;
 }
 .vtree-wrap::-webkit-scrollbar { height: 8px; }
 .vtree-wrap::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 4px; }
@@ -314,6 +314,12 @@
 .vtree, .vtree ul {
     list-style: none; margin: 0; padding: 0;
     display: flex; justify-content: center;
+}
+/* ul.vtree باید به اندازه محتوا باشد (نه 100% والد)
+   تا scrollbar بتواند به هر دو طرف بپیماید */
+ul.vtree {
+    width: max-content;
+    min-width: 100%;
 }
 .vtree ul {
     padding-top: 32px;
@@ -416,12 +422,27 @@ const CSRF = document.querySelector('meta[name="csrf-token"]')?.content
 
 async function refreshTree() {
     if (!treeContainer || !TREE_URL) return;
+    // ذخیره موقعیت scroll و zoom فعلی
+    const wrap      = document.querySelector('.vtree-wrap');
+    const savedLeft = wrap?.scrollLeft ?? 0;
+    const savedTop  = wrap?.scrollTop  ?? 0;
+
     treeContainer.style.opacity = '0.5';
     try {
         const res  = await fetch(TREE_URL, { headers: { Accept: 'application/json' } });
         const data = await res.json();
         treeContainer.innerHTML = data.html;
+        // zoom فعلی را حفظ کن — refit نکن
         _applyTreeZoom();
+        _updateUndoBtn();
+        // موقعیت scroll را برگردان
+        requestAnimationFrame(() => {
+            const newWrap = document.querySelector('.vtree-wrap');
+            if (newWrap) {
+                newWrap.scrollLeft = savedLeft;
+                newWrap.scrollTop  = savedTop;
+            }
+        });
     } finally {
         treeContainer.style.opacity = '1';
     }
@@ -439,18 +460,24 @@ function vtreeZoomFit() {
     const wrap = document.querySelector('.vtree-wrap');
     const ul   = wrap?.querySelector('ul.vtree');
     if (!wrap || !ul) { _treeZoom = 0.8; _applyTreeZoom(); return; }
-    // موقتاً zoom را برمیداریم تا عرض طبیعی را بخوانیم
-    const prev = ul.style.zoom;
+
+    // ابتدا zoom را به 1 برمی‌گردانیم تا عرض طبیعی را بخوانیم
+    // حالا که ul.vtree دارای width:max-content است، scrollWidth عرض واقعی درخت را برمی‌گرداند
     ul.style.zoom = '1';
     const nat   = ul.scrollWidth;
-    ul.style.zoom = prev;
-    const avail = wrap.clientWidth - 80;
-    if (nat > 0) {
-        _treeZoom = Math.min(1.0, Math.max(0.25, Math.floor((avail / nat) * 10) / 10));
+    const avail = wrap.clientWidth - 40;
+
+    if (nat > avail && nat > 0) {
+        _treeZoom = Math.min(1.0, Math.max(0.15, Math.floor((avail / nat) * 100) / 100));
     } else {
-        _treeZoom = 0.8;
+        _treeZoom = 1.0;
     }
     _applyTreeZoom();
+
+    // اسکرول به وسط درخت
+    requestAnimationFrame(() => {
+        wrap.scrollLeft = (wrap.scrollWidth - wrap.clientWidth) / 2;
+    });
 }
 
 function _applyTreeZoom() {
@@ -459,6 +486,169 @@ function _applyTreeZoom() {
     const lbl = document.getElementById('vtree-zoom-label');
     if (lbl) lbl.textContent = Math.round(_treeZoom * 100) + '٪';
 }
+
+// ─── Undo History ────────────────────────────────────────────────────────────
+const _history = [];
+const MAX_UNDO  = 30;
+
+function _pushUndo(action) {
+    _history.push(action);
+    if (_history.length > MAX_UNDO) _history.shift();
+    _updateUndoBtn();
+}
+
+function _updateUndoBtn() {
+    const btn = document.getElementById('vtree-undo-btn');
+    if (!btn) return;
+    const has = _history.length > 0;
+    btn.disabled       = !has;
+    btn.style.opacity  = has ? '1' : '0.4';
+    btn.style.cursor   = has ? 'pointer' : 'default';
+    btn.style.color    = has ? '#4f46e5' : '#6b7280';
+    btn.style.borderColor = has ? '#a5b4fc' : '#e5e7eb';
+    btn.title = has ? ('↩ ' + _history[_history.length - 1].label) : 'تغییری برای بازگشت وجود ندارد';
+}
+
+async function vtreeUndo() {
+    if (_history.length === 0) return;
+    const action = _history.pop();
+    _updateUndoBtn();
+    const catId = _catId();
+
+    const doFetch = (url, method, body, json = false) => fetch(url, {
+        method,
+        body: json ? JSON.stringify(body) : body,
+        headers: {
+            Accept: 'application/json',
+            'X-CSRF-TOKEN': CSRF,
+            ...(json ? { 'Content-Type': 'application/json' } : {}),
+        },
+    }).then(r => r.json());
+
+    try {
+        let ok = false;
+
+        if (action.type === 'edit_field') {
+            const fd = new FormData();
+            fd.append('_method', 'PUT');
+            fd.append('label',       action.old.label);
+            fd.append('description', action.old.description ?? '');
+            fd.append('type',        action.old.type);
+            if (action.old.is_required) fd.append('is_required', '1');
+            if (action.old.is_multiple) fd.append('is_multiple', '1');
+            const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}`, 'POST', fd);
+            ok = d.success;
+        }
+
+        else if (action.type === 'edit_option') {
+            const fd = new FormData();
+            fd.append('_method', 'PUT');
+            fd.append('label', action.oldLabel);
+            const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/options/${action.optionId}`, 'POST', fd);
+            ok = d.success;
+        }
+
+        else if (action.type === 'add_option') {
+            const fd = new FormData(); fd.append('_method', 'DELETE');
+            const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/options/${action.optionId}`, 'POST', fd);
+            ok = d.success;
+        }
+
+        else if (action.type === 'add_field') {
+            const fd = new FormData(); fd.append('_method', 'DELETE');
+            const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}`, 'POST', fd);
+            ok = d.success;
+        }
+
+        else if (action.type === 'reparent_field') {
+            const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/reparent`, 'PATCH',
+                { parent_option_id: action.oldParentOptionId }, true);
+            ok = d.success;
+        }
+
+        else if (action.type === 'reparent_option') {
+            const d = await doFetch(`/admin/categories/${catId}/fields/${action.oldFieldId}/options/${action.optionId}/reparent`, 'PATCH',
+                { field_id: action.oldFieldId }, true);
+            ok = d.success;
+        }
+
+        if (ok) { treeToast('↩ بازگشت: ' + action.label); await refreshTree(); }
+        else {
+            treeToast('❌ بازگشت ناموفق', false);
+            _history.push(action); _updateUndoBtn(); // برگردان به تاریخچه
+        }
+    } catch {
+        treeToast('❌ خطا در بازگشت', false);
+        _history.push(action); _updateUndoBtn();
+    }
+}
+
+// Ctrl+Z / Cmd+Z
+document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+        e.preventDefault();
+        vtreeUndo();
+    }
+});
+
+// ─── Ctrl+Scroll → zoom ───────────────────────────────────────────────────────
+document.addEventListener('wheel', e => {
+    if (!e.ctrlKey) return;
+    const wrap = e.target.closest('.vtree-wrap');
+    if (!wrap) return;
+    e.preventDefault();
+    // نقطه‌ای که موس روی آن است را ثابت نگه‌داری می‌کنیم
+    const rect   = wrap.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left + wrap.scrollLeft;
+    const mouseY = e.clientY - rect.top  + wrap.scrollTop;
+    const oldZoom = _treeZoom;
+    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+    _treeZoom = Math.max(0.15, Math.min(1.5, Math.round((_treeZoom + delta) * 100) / 100));
+    _applyTreeZoom();
+    // تنظیم scroll تا نقطه موس ثابت بماند
+    requestAnimationFrame(() => {
+        const ratio = _treeZoom / oldZoom;
+        wrap.scrollLeft = mouseX * ratio - (e.clientX - rect.left);
+        wrap.scrollTop  = mouseY * ratio - (e.clientY - rect.top);
+    });
+}, { passive: false });
+
+// ─── Click+Drag → pan ────────────────────────────────────────────────────────
+let _pan = null;
+
+document.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const wrap = e.target.closest('.vtree-wrap');
+    if (!wrap) return;
+    // فقط روی پس‌زمینه (نه node یا دکمه)
+    if (e.target.closest('.vtree-node, button, input, select, a')) return;
+    _pan = { x: e.clientX, y: e.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop, el: wrap };
+    wrap.style.cursor = 'grabbing';
+    wrap.style.userSelect = 'none';
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+    if (!_pan) return;
+    _pan.el.scrollLeft = _pan.sl - (e.clientX - _pan.x);
+    _pan.el.scrollTop  = _pan.st - (e.clientY - _pan.y);
+});
+
+document.addEventListener('mouseup', () => {
+    if (!_pan) return;
+    _pan.el.style.cursor = '';
+    _pan.el.style.userSelect = '';
+    _pan = null;
+});
+
+document.addEventListener('mouseleave', () => {
+    if (!_pan) return;
+    _pan.el.style.cursor = '';
+    _pan.el.style.userSelect = '';
+    _pan = null;
+});
 
 function treeToast(msg, ok = true) {
     const old = document.getElementById('tree-toast');
@@ -641,6 +831,7 @@ async function vtreeStoreOption() {
         });
     }
 
+    _pushUndo({ type: 'add_option', fieldId: _vpFieldId, optionId: data.option_id, label: `افزودن گزینه "${label}"` });
     vtreePopoverClose();
     treeToast('✅ ' + data.message);
     await refreshTree();
@@ -660,12 +851,22 @@ async function vtreeStoreField() {
         headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await res.json();
-    if (data.success) { vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree(); }
-    else treeToast('❌ ' + (data.message || 'خطا'), false);
+    if (data.success) {
+        if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `افزودن فیلد "${label}"` });
+        vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree();
+    } else treeToast('❌ ' + (data.message || 'خطا'), false);
 }
 
 async function vtreeSubmitField() {
     const catId = _catId();
+    // ذخیره مقادیر قبلی برای undo
+    const oldData = {
+        label:       _vpAnchorEl?.dataset.label       ?? '',
+        description: _vpAnchorEl?.dataset.description ?? '',
+        type:        _vpAnchorEl?.dataset.type         ?? '',
+        is_required: _vpAnchorEl?.dataset.isRequired  === '1',
+        is_multiple: _vpAnchorEl?.dataset.isMultiple  === '1',
+    };
     const fd = new FormData();
     fd.append('_method', 'PUT');
     fd.append('label',       document.getElementById('vp-f-label').value);
@@ -678,8 +879,10 @@ async function vtreeSubmitField() {
         headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await res.json();
-    if (data.success) { vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree(); }
-    else treeToast('❌ ' + (data.message || 'خطا'), false);
+    if (data.success) {
+        _pushUndo({ type: 'edit_field', fieldId: _vpFieldId, old: oldData, label: `ویرایش فیلد "${oldData.label}"` });
+        vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree();
+    } else treeToast('❌ ' + (data.message || 'خطا'), false);
 }
 
 async function vtreeDeleteField() {
@@ -696,7 +899,8 @@ async function vtreeDeleteField() {
 }
 
 async function vtreeSubmitOption() {
-    const catId = _catId();
+    const catId   = _catId();
+    const oldLabel = _vpAnchorEl?.dataset.label ?? '';
     const fd = new FormData();
     fd.append('_method', 'PUT');
     fd.append('label', document.getElementById('vp-o-label').value);
@@ -705,8 +909,10 @@ async function vtreeSubmitOption() {
         headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await res.json();
-    if (data.success) { vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree(); }
-    else treeToast('❌ ' + (data.message || 'خطا'), false);
+    if (data.success) {
+        _pushUndo({ type: 'edit_option', fieldId: _vpOptFieldId, optionId: _vpOptId, oldLabel, label: `ویرایش گزینه "${oldLabel}"` });
+        vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree();
+    } else treeToast('❌ ' + (data.message || 'خطا'), false);
 }
 
 async function vtreeDeleteOption() {
@@ -740,9 +946,22 @@ let _clipboard  = [];    // option_ids to paste
 function vtreeNodeClick(e, el, kind) {
     e.stopPropagation();
 
-    // paste mode: کلیک روی field از نوع option = paste
+    // paste mode
     if (_pasteMode) {
-        if (kind === 'field' && el.dataset.type === 'option') vtreePasteHere(el);
+        if (kind === 'field' && el.dataset.type === 'option') {
+            // کلیک مستقیم روی یک فیلد گزینه‌ای
+            vtreePasteHere(el);
+        } else if (kind === 'option') {
+            // کاربر روی یک گزینه (option node) کلیک کرده
+            // دنبال فیلد گزینه‌ای فرزند آن می‌گردیم
+            const li = el.closest('li');
+            const childField = li?.querySelector(':scope > ul .vtree-node[data-type="option"]');
+            if (childField) {
+                vtreePasteHere(childField);
+            } else {
+                treeToast('❌ این گزینه، فیلد شاخه‌ای ندارد. ابتدا یک فیلد از نوع «گزینه» زیر آن بسازید.', false);
+            }
+        }
         return;
     }
 
@@ -938,6 +1157,10 @@ async function vtreeDrop(e, el) {
 
     // ── Field reparent
     if (_dndSource.kind === 'field' && el.dataset.optionId) {
+        // موقعیت قبلی: پیدا کردن parent_option_id فعلی از DOM
+        const fieldEl  = document.querySelector(`.vtree-node[data-field-id="${_dndSource.fieldId}"]`);
+        const oldParent = fieldEl?.closest('li')?.closest('ul')?.closest('li')
+            ?.querySelector(':scope > .vtree-node[data-option-id]')?.dataset.optionId ?? null;
         const res = await fetch(`/admin/categories/${catId}/fields/${_dndSource.fieldId}/reparent`, {
             method: 'PATCH',
             body: JSON.stringify({ parent_option_id: el.dataset.optionId }),
@@ -945,21 +1168,26 @@ async function vtreeDrop(e, el) {
         });
         const d = await res.json();
         ok = d.success;
-        if (ok) treeToast('✅ فیلد جابجا شد');
-        else    treeToast('❌ ' + (d.message || 'خطا'), false);
+        if (ok) {
+            _pushUndo({ type: 'reparent_field', fieldId: _dndSource.fieldId, oldParentOptionId: oldParent, label: 'جابجایی فیلد' });
+            treeToast('✅ فیلد جابجا شد');
+        } else treeToast('❌ ' + (d.message || 'خطا'), false);
     }
 
     // ── Option reparent
     if (_dndSource.kind === 'option' && el.dataset.fieldId) {
-        const res = await fetch(`/admin/categories/${catId}/fields/${_dndSource.ownerFieldId}/options/${_dndSource.optionId}/reparent`, {
+        const oldFieldId = _dndSource.ownerFieldId;
+        const res = await fetch(`/admin/categories/${catId}/fields/${oldFieldId}/options/${_dndSource.optionId}/reparent`, {
             method: 'PATCH',
             body: JSON.stringify({ field_id: el.dataset.fieldId }),
             headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
         });
         const d = await res.json();
         ok = d.success;
-        if (ok) treeToast('✅ گزینه جابجا شد');
-        else    treeToast('❌ ' + (d.message || 'خطا'), false);
+        if (ok) {
+            _pushUndo({ type: 'reparent_option', optionId: _dndSource.optionId, oldFieldId, label: 'جابجایی گزینه' });
+            treeToast('✅ گزینه جابجا شد');
+        } else treeToast('❌ ' + (d.message || 'خطا'), false);
     }
 
     _dndSource = null;
@@ -1014,4 +1242,16 @@ document.addEventListener('submit', async function (e) {
 
 // اطمینان از اینکه popover مستقیم در body باشه (برای fixed positioning و view:cache)
 (function () {
-    const pop = document.getElementB
+    const pop = document.getElementById('vtree-popover');
+    if (pop && pop.parentNode !== document.body) {
+        document.body.appendChild(pop);
+    }
+})();
+
+// auto-fit zoom هنگام load اولیه
+(function () {
+    // کمی تأخیر تا tree کاملاً render شده باشد
+    setTimeout(vtreeZoomFit, 150);
+})();
+</script>
+@endpush

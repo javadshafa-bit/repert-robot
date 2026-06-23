@@ -33,8 +33,9 @@ class BotController extends Controller
         $update = $request->all();
         Log::info(json_encode($update, JSON_UNESCAPED_UNICODE));
 
-        if (isset($update['message']))          $this->processMessage($update['message']);
-        elseif (isset($update['callback_query'])) $this->processCallback($update['callback_query']);
+        if (isset($update['message']))               $this->processMessage($update['message']);
+        elseif (isset($update['edited_message']))     $this->processEditedMessage($update['edited_message']);
+        elseif (isset($update['callback_query']))     $this->processCallback($update['callback_query']);
 
         return response('OK', 200);
     }
@@ -59,6 +60,39 @@ class BotController extends Controller
         }
 
         $this->showMainMenu($chatId);
+    }
+
+    private function processEditedMessage($message): void
+    {
+        $chatId = $message['chat']['id'];
+        $text   = $message['text'] ?? null;
+        $photo  = $message['photo'] ?? null;
+        $state  = BotState::where('chat_id', $chatId)->first();
+
+        if (!$state || !$state->representative_id) return;
+
+        // فقط در مرحله پاسخ به فیلد یا ویرایش فیلد قابل استفاده است
+        if (in_array($state->step, ['answering_field', 'editing_field'])) {
+            $isEditing = $state->step === 'editing_field';
+            if ($photo) return $this->handleFileUpload($chatId, $photo, null, $state, $isEditing);
+            if ($text)  return $isEditing
+                ? $this->saveEditedAnswer($chatId, $text, $state)
+                : $this->saveAnswerAndContinue($chatId, $text, $state);
+            return;
+        }
+
+        // در مرحله تأیید گزارش: پیام ویرایش‌شده را به عنوان ویرایش گزارش پردازش کن
+        if ($state->step === 'confirming') {
+            if ($text) {
+                $this->sendMessage($chatId, "✏️ پیام شما ویرایش شد. برای اعمال تغییر، گزینه «ویرایش» را از منوی تأیید انتخاب کنید.");
+            }
+            return;
+        }
+
+        // سایر مراحل: نادیده بگیر یا راهنمایی کن
+        if ($text || $photo) {
+            $this->sendMessage($chatId, "⚠️ ویرایش پیام در این مرحله قابل پردازش نیست. پیام جدیدی ارسال کنید.");
+        }
     }
 
     private function processCallback($callbackQuery)
