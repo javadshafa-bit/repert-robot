@@ -247,6 +247,9 @@
         <div class="flex gap-2">
             <button onclick="vtreeSubmitOption()"
                     class="flex-1 py-1.5 bg-orange-500 text-white text-xs font-semibold rounded-lg hover:bg-orange-600">ذخیره</button>
+            <button onclick="vtreeCopyThisOption()"
+                    title="کپی این گزینه با همه زیرمجموعه‌هایش برای paste در جای دیگر"
+                    class="py-1.5 px-3 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded-lg hover:bg-indigo-100">📋</button>
             <button onclick="vtreeDeleteOption()"
                     class="py-1.5 px-3 bg-red-50 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-100">حذف</button>
         </div>
@@ -291,52 +294,22 @@
 
 </div>
 
-{{-- ─── Palette Panel ─────────────────────────────────────────────────────── --}}
-<div id="vtree-palette"
-     style="position:fixed;bottom:1.5rem;right:50%;transform:translateX(50%);z-index:900;
-            background:#fff;border:1.5px solid #e5e7eb;border-radius:1rem;
-            box-shadow:0 8px 30px rgba(0,0,0,.12);padding:.6rem .8rem;
-            display:flex;align-items:center;gap:.5rem;user-select:none;">
-    <span style="font-size:.7rem;color:#9ca3af;white-space:nowrap">درگ کنید:</span>
-    <div class="vtree-palette-chip" draggable="true"
-         ondragstart="vtreePaletteDrag(event,'text')"
-         style="background:#f9fafb;border:1.5px solid #9ca3af;color:#374151">📝 متن</div>
-    <div class="vtree-palette-chip" draggable="true"
-         ondragstart="vtreePaletteDrag(event,'option')"
-         style="background:#f5f3ff;border:1.5px solid #a78bfa;color:#5b21b6">🔘 گزینه</div>
-    <div class="vtree-palette-chip" draggable="true"
-         ondragstart="vtreePaletteDrag(event,'photo')"
-         style="background:#eff6ff;border:1.5px solid #60a5fa;color:#1d4ed8">📸 عکس</div>
-    <div class="vtree-palette-chip" draggable="true"
-         ondragstart="vtreePaletteDrag(event,'link')"
-         style="background:#f0fdf4;border:1.5px solid #4ade80;color:#15803d">🔗 لینک</div>
-    <div style="width:1px;height:1.5rem;background:#e5e7eb;margin:0 .25rem"></div>
-    {{-- copy section --}}
-    <div id="palette-copy-section" style="display:none;align-items:center;gap:.4rem">
-        <span id="palette-sel-count" style="font-size:.7rem;color:#6366f1;font-weight:600"></span>
-        <button onclick="vtreeCopySelected()"
-                style="font-size:.7rem;padding:.25rem .6rem;background:#6366f1;color:#fff;border:none;border-radius:.5rem;cursor:pointer">
-            📋 کپی
-        </button>
-        <button onclick="vtreeClearSelection()"
-                style="font-size:.7rem;padding:.25rem .5rem;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:.5rem;cursor:pointer">
-            ✕
-        </button>
-    </div>
-    {{-- paste mode --}}
-    <div id="palette-paste-section" style="display:none;align-items:center;gap:.4rem">
-        <span style="font-size:.7rem;color:#f59e0b;font-weight:600">روی یک فیلد گزینه‌ای کلیک کنید تا paste شود</span>
-        <button onclick="vtreeCancelPaste()"
-                style="font-size:.7rem;padding:.25rem .5rem;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:.5rem;cursor:pointer">
-            انصراف
-        </button>
-    </div>
-</div>
-
 @push('scripts')
 <style>
 /* ─── Visual Tree CSS ───────────────────────────────────────────── */
-.vtree-wrap { padding: 2rem 1.5rem; overflow-x: auto; min-height: 100px; }
+.vtree-wrap {
+    padding: 2rem 3rem 2.5rem;   /* چپ/راست بیشتر تا گره‌ها از لبه فاصله داشته باشند */
+    overflow-x: auto;
+    overflow-y: visible;
+    min-height: 100px;
+    /* اسکرول‌بار همیشه نمایش داده شود تا کاربر بداند scroll وجود دارد */
+    scrollbar-width: thin;
+    scrollbar-color: #c7d2fe #f3f4f6;
+}
+.vtree-wrap::-webkit-scrollbar { height: 8px; }
+.vtree-wrap::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 4px; }
+.vtree-wrap::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 4px; }
+.vtree-wrap::-webkit-scrollbar-thumb:hover { background: #818cf8; }
 
 .vtree, .vtree ul {
     list-style: none; margin: 0; padding: 0;
@@ -448,9 +421,43 @@ async function refreshTree() {
         const res  = await fetch(TREE_URL, { headers: { Accept: 'application/json' } });
         const data = await res.json();
         treeContainer.innerHTML = data.html;
+        _applyTreeZoom();
     } finally {
         treeContainer.style.opacity = '1';
     }
+}
+
+// ─── Tree Zoom ────────────────────────────────────────────────────────────────
+let _treeZoom = 0.8;
+
+function vtreeZoom(delta) {
+    _treeZoom = Math.max(0.25, Math.min(1.5, Math.round((_treeZoom + delta) * 10) / 10));
+    _applyTreeZoom();
+}
+
+function vtreeZoomFit() {
+    const wrap = document.querySelector('.vtree-wrap');
+    const ul   = wrap?.querySelector('ul.vtree');
+    if (!wrap || !ul) { _treeZoom = 0.8; _applyTreeZoom(); return; }
+    // موقتاً zoom را برمیداریم تا عرض طبیعی را بخوانیم
+    const prev = ul.style.zoom;
+    ul.style.zoom = '1';
+    const nat   = ul.scrollWidth;
+    ul.style.zoom = prev;
+    const avail = wrap.clientWidth - 80;
+    if (nat > 0) {
+        _treeZoom = Math.min(1.0, Math.max(0.25, Math.floor((avail / nat) * 10) / 10));
+    } else {
+        _treeZoom = 0.8;
+    }
+    _applyTreeZoom();
+}
+
+function _applyTreeZoom() {
+    const ul = document.querySelector('.vtree-wrap ul.vtree');
+    if (ul) ul.style.zoom = _treeZoom;
+    const lbl = document.getElementById('vtree-zoom-label');
+    if (lbl) lbl.textContent = Math.round(_treeZoom * 100) + '٪';
 }
 
 function treeToast(msg, ok = true) {
@@ -764,6 +771,19 @@ function vtreeToggleSelect(el) {
     _updatePaletteCopySection();
 }
 
+// کپی مستقیم از popover — فقط همین یک گزینه
+function vtreeCopyThisOption() {
+    vtreePopoverClose();
+    _clipboard  = [_vpOptId];
+    _pasteMode  = true;
+    _selected   = [];
+    document.getElementById('palette-copy-section').style.display = 'none';
+    document.getElementById('palette-paste-section').style.display = 'flex';
+    // هایلایت همه فیلدهای از نوع گزینه
+    document.querySelectorAll('.vtree-node[data-type="option"]').forEach(n => n.classList.add('vtree-paste-target'));
+    treeToast('روی یک فیلد گزینه‌ای کلیک کنید تا گزینه آنجا paste شود');
+}
+
 function vtreeClearSelection() {
     _selected = [];
     document.querySelectorAll('.vtree-selected').forEach(n => n.classList.remove('vtree-selected'));
@@ -994,10 +1014,4 @@ document.addEventListener('submit', async function (e) {
 
 // اطمینان از اینکه popover مستقیم در body باشه (برای fixed positioning و view:cache)
 (function () {
-    const pop = document.getElementById('vtree-popover');
-    if (pop && pop.parentNode !== document.body) {
-        document.body.appendChild(pop);
-    }
-})();
-</script>
-@endpush
+    const pop = document.getElementB
