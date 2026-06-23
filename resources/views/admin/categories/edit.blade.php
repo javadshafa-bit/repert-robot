@@ -1058,6 +1058,54 @@ async function vtreePasteHere(el) {
     _clipboard = [];
 }
 
+// ── Palette instant-create helpers ───────────────────────────────────────────
+
+async function _paletteCreateOption(fieldId) {
+    const catId = _catId();
+    const label = 'گزینه جدید';
+    const fd = new FormData();
+    fd.append('label', label);
+    const res  = await fetch(`/admin/categories/${catId}/fields/${fieldId}/options`, {
+        method: 'POST', body: fd,
+        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+    });
+    const data = await res.json();
+    if (!data.success) { treeToast('❌ خطا در ایجاد گزینه', false); return; }
+    _pushUndo({ type: 'add_option', fieldId, optionId: data.option_id, label: `افزودن "${label}"` });
+    treeToast('✅ گزینه ساخته شد — عنوان را ویرایش کنید');
+    await refreshTree();
+    // باز کردن popover ویرایش روی گزینه جدید
+    requestAnimationFrame(() => {
+        const el = document.querySelector(`.vtree-node[data-option-id="${data.option_id}"]`);
+        if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditOption(el); }
+    });
+}
+
+async function _paletteCreateField(parentOptionId, type) {
+    const catId  = _catId();
+    const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک' };
+    const label  = labels[type] || 'فیلد جدید';
+    const fd = new FormData();
+    fd.append('label', label);
+    fd.append('type', type);
+    fd.append('parent_option_id', parentOptionId);
+    fd.append('is_required', '1');
+    const res  = await fetch(`/admin/categories/${catId}/fields`, {
+        method: 'POST', body: fd,
+        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+    });
+    const data = await res.json();
+    if (!data.success) { treeToast('❌ خطا در ایجاد فیلد', false); return; }
+    if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `افزودن "${label}"` });
+    treeToast('✅ فیلد ساخته شد — عنوان را ویرایش کنید');
+    await refreshTree();
+    // باز کردن popover ویرایش روی فیلد جدید
+    requestAnimationFrame(() => {
+        const el = document.querySelector(`.vtree-node[data-field-id="${data.field_id}"]`);
+        if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditField(el); }
+    });
+}
+
 // ── Palette drag
 function vtreePaletteDrag(e, type) {
     _dndSource = { kind: 'palette', type };
@@ -1125,34 +1173,19 @@ async function vtreeDrop(e, el) {
     const catId = _catId();
     let ok = false;
 
-    // ── Palette drop
+    // ── Palette drop — فوری ایجاد کن، بعد popover ویرایش باز کن
     if (_dndSource.kind === 'palette') {
+        const palType = _dndSource.type;
+        _dndSource = null;
+
         if (el.dataset.optionId) {
-            // روی option → باز کن popover «افزودن زیرفیلد» با type از قبل
-            _vpOptId      = el.dataset.optionId;
-            _vpOptFieldId = el.dataset.fieldId;
-            document.getElementById('vp-af-type').value = _dndSource.type;
-            document.getElementById('vp-af-label').value = '';
-            document.getElementById('vp-add-field').classList.remove('hidden');
-            document.getElementById('vp-option').classList.remove('hidden');
-            document.getElementById('vp-field').classList.add('hidden');
-            vtreePopoverShow(el);
-            _dndSource = null;
-            return;
+            // روی گزینه → فیلد زیرمجموعه با نام پیش‌فرض بساز
+            await _paletteCreateField(el.dataset.optionId, palType);
         } else if (el.dataset.fieldId && el.dataset.type === 'option') {
-            // روی field (option) → باز کن popover «افزودن گزینه»
-            _vpFieldId = el.dataset.fieldId;
-            document.getElementById('vp-ao-label').value = '';
-            document.getElementById('vp-ao-child-type').value = '';
-            document.getElementById('vp-ao-child-label-wrap').classList.add('hidden');
-            document.getElementById('vp-add-opt').classList.remove('hidden');
-            document.getElementById('vp-f-add-opt-wrap').classList.remove('hidden');
-            document.getElementById('vp-field').classList.remove('hidden');
-            document.getElementById('vp-option').classList.add('hidden');
-            vtreePopoverShow(el);
-            _dndSource = null;
-            return;
+            // روی فیلد گزینه‌ای → گزینه با نام پیش‌فرض بساز
+            await _paletteCreateOption(el.dataset.fieldId);
         }
+        return;
     }
 
     // ── Field reparent
