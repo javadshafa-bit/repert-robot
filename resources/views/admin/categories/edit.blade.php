@@ -134,7 +134,7 @@
 
         {{-- درخت فیلدها --}}
         <div id="tree-container"
-             class="bg-white border rounded-xl shadow-sm overflow-hidden"
+             class="bg-white border rounded-xl shadow-sm"
              data-tree-url="{{ route('admin.categories.tree-fragment', $category) }}"
              data-category-id="{{ $category->id }}">
             @include('admin.categories._tree_fragment', ['category' => $category])
@@ -160,6 +160,15 @@
                 <label class="block text-xs font-medium text-gray-500 mb-1">عنوان سوال</label>
                 <input id="vp-f-label" type="text" placeholder="مثلاً: وضعیت ساختمان"
                        class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">نوع ورودی</label>
+                <select id="vp-f-type" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                    <option value="text">متن آزاد</option>
+                    <option value="option">گزینه (شاخه‌ای)</option>
+                    <option value="photo">عکس</option>
+                    <option value="link">لینک</option>
+                </select>
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-500 mb-1">توضیح راهنما <span class="text-gray-400 font-normal">(اختیاری)</span></label>
@@ -282,28 +291,70 @@
 
 </div>
 
+{{-- ─── Palette Panel ─────────────────────────────────────────────────────── --}}
+<div id="vtree-palette"
+     style="position:fixed;bottom:1.5rem;right:50%;transform:translateX(50%);z-index:900;
+            background:#fff;border:1.5px solid #e5e7eb;border-radius:1rem;
+            box-shadow:0 8px 30px rgba(0,0,0,.12);padding:.6rem .8rem;
+            display:flex;align-items:center;gap:.5rem;user-select:none;">
+    <span style="font-size:.7rem;color:#9ca3af;white-space:nowrap">درگ کنید:</span>
+    <div class="vtree-palette-chip" draggable="true"
+         ondragstart="vtreePaletteDrag(event,'text')"
+         style="background:#f9fafb;border:1.5px solid #9ca3af;color:#374151">📝 متن</div>
+    <div class="vtree-palette-chip" draggable="true"
+         ondragstart="vtreePaletteDrag(event,'option')"
+         style="background:#f5f3ff;border:1.5px solid #a78bfa;color:#5b21b6">🔘 گزینه</div>
+    <div class="vtree-palette-chip" draggable="true"
+         ondragstart="vtreePaletteDrag(event,'photo')"
+         style="background:#eff6ff;border:1.5px solid #60a5fa;color:#1d4ed8">📸 عکس</div>
+    <div class="vtree-palette-chip" draggable="true"
+         ondragstart="vtreePaletteDrag(event,'link')"
+         style="background:#f0fdf4;border:1.5px solid #4ade80;color:#15803d">🔗 لینک</div>
+    <div style="width:1px;height:1.5rem;background:#e5e7eb;margin:0 .25rem"></div>
+    {{-- copy section --}}
+    <div id="palette-copy-section" style="display:none;align-items:center;gap:.4rem">
+        <span id="palette-sel-count" style="font-size:.7rem;color:#6366f1;font-weight:600"></span>
+        <button onclick="vtreeCopySelected()"
+                style="font-size:.7rem;padding:.25rem .6rem;background:#6366f1;color:#fff;border:none;border-radius:.5rem;cursor:pointer">
+            📋 کپی
+        </button>
+        <button onclick="vtreeClearSelection()"
+                style="font-size:.7rem;padding:.25rem .5rem;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:.5rem;cursor:pointer">
+            ✕
+        </button>
+    </div>
+    {{-- paste mode --}}
+    <div id="palette-paste-section" style="display:none;align-items:center;gap:.4rem">
+        <span style="font-size:.7rem;color:#f59e0b;font-weight:600">روی یک فیلد گزینه‌ای کلیک کنید تا paste شود</span>
+        <button onclick="vtreeCancelPaste()"
+                style="font-size:.7rem;padding:.25rem .5rem;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:.5rem;cursor:pointer">
+            انصراف
+        </button>
+    </div>
+</div>
+
 @push('scripts')
 <style>
 /* ─── Visual Tree CSS ───────────────────────────────────────────── */
-.vtree-wrap { padding: 1.5rem 1rem; overflow-x: auto; min-height: 80px; }
+.vtree-wrap { padding: 2rem 1.5rem; overflow-x: auto; min-height: 100px; }
 
 .vtree, .vtree ul {
     list-style: none; margin: 0; padding: 0;
     display: flex; justify-content: center;
 }
 .vtree ul {
-    padding-top: 24px;
+    padding-top: 32px;
     position: relative;
 }
 /* خط عمودی از والد به سطر فرزندان */
 .vtree ul::before {
     content: '';
     position: absolute; top: 0; left: 50%;
-    height: 24px; border-left: 2px solid #d1d5db;
+    height: 32px; border-left: 2px solid #d1d5db;
 }
 .vtree li {
     display: flex; flex-direction: column; align-items: center;
-    padding: 0 6px; position: relative;
+    padding: 0 14px; position: relative;
 }
 /* خطوط افقی بین برادرها */
 .vtree li::before, .vtree li::after {
@@ -322,13 +373,15 @@
 .vtree-node {
     position: relative; z-index: 1;
     border: 1.5px solid; border-radius: 10px;
-    text-align: center; max-width: 130px; min-width: 72px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.08);
-    padding: 5px 10px; cursor: default;
+    text-align: center; max-width: 150px; min-width: 80px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.09);
+    padding: 7px 14px; cursor: default;
+    transition: box-shadow .15s, transform .15s;
 }
+.vtree-node:hover { box-shadow: 0 4px 12px rgba(99,102,241,.25); transform: translateY(-1px); }
 .vtree-option-node {
     border-radius: 99px !important;
-    padding: 3px 12px !important;
+    padding: 4px 16px !important;
     background: #fff7ed; border-color: #fb923c; color: #9a3412;
 }
 .vtree-badge  { display: block; font-size: 9px; opacity: .6; margin-bottom: 1px; }
@@ -343,6 +396,22 @@
 
 /* ─── Vtree hover highlight ─── */
 .vtree-node:hover { filter: brightness(0.95); outline: 2px solid #6366f1; outline-offset: 1px; }
+
+/* ─── Drag & Drop states ─── */
+.vtree-node.vtree-dragging  { opacity: .4; }
+.vtree-node.vtree-drop-ok   { outline: 2.5px dashed #22c55e !important; outline-offset: 3px; background-color: #f0fdf4 !important; transform: scale(1.05); }
+.vtree-node.vtree-drop-no   { outline: 2px dashed #ef4444 !important; outline-offset: 2px; }
+.vtree-node.vtree-selected  { outline: 2.5px solid #6366f1 !important; outline-offset: 2px; }
+.vtree-node.vtree-paste-target { outline: 2.5px solid #f59e0b !important; outline-offset: 3px; animation: vtree-pulse .8s infinite alternate; }
+@keyframes vtree-pulse { from { box-shadow: 0 0 0 0 rgba(245,158,11,.4); } to { box-shadow: 0 0 0 8px rgba(245,158,11,0); } }
+
+/* ─── Palette chips ─── */
+.vtree-palette-chip {
+    padding: .3rem .7rem; border-radius: .5rem; font-size: .72rem; font-weight: 600;
+    cursor: grab; white-space: nowrap; transition: transform .1s, box-shadow .1s;
+}
+.vtree-palette-chip:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.vtree-palette-chip:active { cursor: grabbing; }
 
 /* ─── زیرفیلدهای همیشگی ─── */
 .vtree-always-ul {
@@ -450,12 +519,13 @@ function vtreePopoverShow(el) {
 
 function vtreeEditField(el) {
     _vpFieldId = el.dataset.fieldId;
-    document.getElementById('vp-f-label').value    = el.dataset.label || '';
-    document.getElementById('vp-f-desc').value     = el.dataset.description || '';
+    document.getElementById('vp-f-label').value      = el.dataset.label || '';
+    document.getElementById('vp-f-desc').value       = el.dataset.description || '';
+    document.getElementById('vp-f-type').value       = el.dataset.type || 'text';
     document.getElementById('vp-f-required').checked = el.dataset.isRequired === '1';
     document.getElementById('vp-f-multiple').checked = el.dataset.isMultiple === '1';
     document.getElementById('vp-f-multi-wrap').style.display = el.dataset.type === 'option' ? 'none' : '';
-    // show "add option" section only for option-type fields
+    // نمایش بخش افزودن گزینه فقط برای فیلدهای نوع گزینه
     document.getElementById('vp-f-add-opt-wrap').classList.toggle('hidden', el.dataset.type !== 'option');
     document.getElementById('vp-add-opt').classList.add('hidden');
     document.getElementById('vp-ao-label').value = '';
@@ -593,6 +663,7 @@ async function vtreeSubmitField() {
     fd.append('_method', 'PUT');
     fd.append('label',       document.getElementById('vp-f-label').value);
     fd.append('description', document.getElementById('vp-f-desc').value);
+    fd.append('type',        document.getElementById('vp-f-type').value);
     if (document.getElementById('vp-f-required').checked) fd.append('is_required', '1');
     if (document.getElementById('vp-f-multiple').checked) fd.append('is_multiple', '1');
     const res  = await fetch(`/admin/categories/${catId}/fields/${_vpFieldId}`, {
@@ -650,6 +721,237 @@ document.addEventListener('click', e => {
     if (!pop.classList.contains('hidden') && !pop.contains(e.target) && !e.target.closest('.vtree-node')) {
         vtreePopoverClose();
     }
+});
+
+// ─── Drag & Drop + Multi-select ─────────────────────────────────────────────
+let _dndSource  = null;  // { kind:'palette'|'field'|'option', type?, fieldId?, optionId?, ownerFieldId? }
+let _selected   = [];    // [{ kind, id }]  — multi-select گزینه‌ها
+let _pasteMode  = false;
+let _clipboard  = [];    // option_ids to paste
+
+// ── Click handler (click vs ctrl+click vs paste-click)
+function vtreeNodeClick(e, el, kind) {
+    e.stopPropagation();
+
+    // paste mode: کلیک روی field از نوع option = paste
+    if (_pasteMode) {
+        if (kind === 'field' && el.dataset.type === 'option') vtreePasteHere(el);
+        return;
+    }
+
+    // ctrl/cmd + click = toggle selection (only options)
+    if ((e.ctrlKey || e.metaKey) && kind === 'option') {
+        e.preventDefault();
+        vtreeToggleSelect(el);
+        return;
+    }
+
+    // normal click = open edit popover
+    if (kind === 'field')  vtreeEditField(el);
+    else                   vtreeEditOption(el);
+}
+
+function vtreeToggleSelect(el) {
+    const id = el.dataset.optionId;
+    const idx = _selected.findIndex(s => s.id === id);
+    if (idx >= 0) {
+        _selected.splice(idx, 1);
+        el.classList.remove('vtree-selected');
+    } else {
+        _selected.push({ kind: 'option', id });
+        el.classList.add('vtree-selected');
+    }
+    _updatePaletteCopySection();
+}
+
+function vtreeClearSelection() {
+    _selected = [];
+    document.querySelectorAll('.vtree-selected').forEach(n => n.classList.remove('vtree-selected'));
+    _updatePaletteCopySection();
+}
+
+function _updatePaletteCopySection() {
+    const sec  = document.getElementById('palette-copy-section');
+    const cnt  = document.getElementById('palette-sel-count');
+    if (_selected.length > 0) {
+        sec.style.display = 'flex';
+        cnt.textContent   = _selected.length + ' گزینه انتخابی';
+    } else {
+        sec.style.display = 'none';
+    }
+}
+
+function vtreeCopySelected() {
+    _clipboard  = _selected.map(s => s.id);
+    _pasteMode  = true;
+    vtreeClearSelection();
+    document.getElementById('palette-copy-section').style.display = 'none';
+    document.getElementById('palette-paste-section').style.display = 'flex';
+    // هایلایت targets
+    document.querySelectorAll('.vtree-node[data-type="option"]').forEach(n => n.classList.add('vtree-paste-target'));
+    treeToast('روی یک فیلد گزینه‌ای کلیک کنید تا paste شود', true);
+}
+
+function vtreeCancelPaste() {
+    _pasteMode = false;
+    _clipboard = [];
+    document.getElementById('palette-paste-section').style.display = 'none';
+    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+}
+
+async function vtreePasteHere(el) {
+    const catId   = _catId();
+    const fieldId = el.dataset.fieldId;
+    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+    document.getElementById('palette-paste-section').style.display = 'none';
+    _pasteMode = false;
+
+    const fd = new FormData();
+    _clipboard.forEach(id => fd.append('option_ids[]', id));
+
+    const res  = await fetch(`/admin/categories/${catId}/fields/${fieldId}/options/batch-copy`, {
+        method: 'POST', body: fd,
+        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    const data = await res.json();
+    if (data.success) { treeToast('✅ ' + data.message); await refreshTree(); }
+    else treeToast('❌ ' + (data.message || 'خطا در paste'), false);
+    _clipboard = [];
+}
+
+// ── Palette drag
+function vtreePaletteDrag(e, type) {
+    _dndSource = { kind: 'palette', type };
+    e.dataTransfer.effectAllowed = 'copy';
+}
+
+// ── Node drag
+function vtreeDragStart(e, kind, el) {
+    e.stopPropagation();
+    if (kind === 'field') {
+        _dndSource = { kind: 'field', fieldId: el.dataset.fieldId, type: el.dataset.type };
+    } else {
+        _dndSource = { kind: 'option', optionId: el.dataset.optionId, ownerFieldId: el.dataset.fieldId };
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => el.classList.add('vtree-dragging'), 0);
+}
+
+// ── Drag over
+function vtreeDragOver(e, el) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!_dndSource) return;
+    const ok = _dropOk(el);
+    el.classList.toggle('vtree-drop-ok', ok);
+    el.classList.toggle('vtree-drop-no', !ok);
+    e.dataTransfer.dropEffect = ok ? (_dndSource.kind === 'palette' ? 'copy' : 'move') : 'none';
+}
+
+function vtreeDragLeave(e, el) {
+    el.classList.remove('vtree-drop-ok', 'vtree-drop-no');
+}
+
+function _dropOk(el) {
+    if (!_dndSource) return false;
+    const isField  = !!el.dataset.fieldId && !el.dataset.optionId;
+    const isOption = !!el.dataset.optionId;
+    const fType    = el.dataset.type;
+
+    if (_dndSource.kind === 'palette') {
+        // palette → روی option: افزودن child field
+        // palette → روی field (type=option): افزودن option
+        return isOption || (isField && fType === 'option');
+    }
+    if (_dndSource.kind === 'field') {
+        // field → فقط روی option دیگر (جابجایی)
+        return isOption;
+    }
+    if (_dndSource.kind === 'option') {
+        // option → فقط روی field (type=option) دیگر
+        return isField && fType === 'option' && el.dataset.fieldId !== _dndSource.ownerFieldId;
+    }
+    return false;
+}
+
+// ── Drop
+async function vtreeDrop(e, el) {
+    e.preventDefault();
+    e.stopPropagation();
+    el.classList.remove('vtree-drop-ok', 'vtree-drop-no', 'vtree-dragging');
+    document.querySelectorAll('.vtree-dragging').forEach(n => n.classList.remove('vtree-dragging'));
+
+    if (!_dndSource || !_dropOk(el)) { _dndSource = null; return; }
+
+    const catId = _catId();
+    let ok = false;
+
+    // ── Palette drop
+    if (_dndSource.kind === 'palette') {
+        if (el.dataset.optionId) {
+            // روی option → باز کن popover «افزودن زیرفیلد» با type از قبل
+            _vpOptId      = el.dataset.optionId;
+            _vpOptFieldId = el.dataset.fieldId;
+            document.getElementById('vp-af-type').value = _dndSource.type;
+            document.getElementById('vp-af-label').value = '';
+            document.getElementById('vp-add-field').classList.remove('hidden');
+            document.getElementById('vp-option').classList.remove('hidden');
+            document.getElementById('vp-field').classList.add('hidden');
+            vtreePopoverShow(el);
+            _dndSource = null;
+            return;
+        } else if (el.dataset.fieldId && el.dataset.type === 'option') {
+            // روی field (option) → باز کن popover «افزودن گزینه»
+            _vpFieldId = el.dataset.fieldId;
+            document.getElementById('vp-ao-label').value = '';
+            document.getElementById('vp-ao-child-type').value = '';
+            document.getElementById('vp-ao-child-label-wrap').classList.add('hidden');
+            document.getElementById('vp-add-opt').classList.remove('hidden');
+            document.getElementById('vp-f-add-opt-wrap').classList.remove('hidden');
+            document.getElementById('vp-field').classList.remove('hidden');
+            document.getElementById('vp-option').classList.add('hidden');
+            vtreePopoverShow(el);
+            _dndSource = null;
+            return;
+        }
+    }
+
+    // ── Field reparent
+    if (_dndSource.kind === 'field' && el.dataset.optionId) {
+        const res = await fetch(`/admin/categories/${catId}/fields/${_dndSource.fieldId}/reparent`, {
+            method: 'PATCH',
+            body: JSON.stringify({ parent_option_id: el.dataset.optionId }),
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+        });
+        const d = await res.json();
+        ok = d.success;
+        if (ok) treeToast('✅ فیلد جابجا شد');
+        else    treeToast('❌ ' + (d.message || 'خطا'), false);
+    }
+
+    // ── Option reparent
+    if (_dndSource.kind === 'option' && el.dataset.fieldId) {
+        const res = await fetch(`/admin/categories/${catId}/fields/${_dndSource.ownerFieldId}/options/${_dndSource.optionId}/reparent`, {
+            method: 'PATCH',
+            body: JSON.stringify({ field_id: el.dataset.fieldId }),
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+        });
+        const d = await res.json();
+        ok = d.success;
+        if (ok) treeToast('✅ گزینه جابجا شد');
+        else    treeToast('❌ ' + (d.message || 'خطا'), false);
+    }
+
+    _dndSource = null;
+    if (ok) await refreshTree();
+}
+
+// dragend پاک‌سازی
+document.addEventListener('dragend', () => {
+    document.querySelectorAll('.vtree-dragging,.vtree-drop-ok,.vtree-drop-no').forEach(n => {
+        n.classList.remove('vtree-dragging', 'vtree-drop-ok', 'vtree-drop-no');
+    });
+    _dndSource = null;
 });
 
 // ─── Intercept tree form submissions ────────────────────────────────────────

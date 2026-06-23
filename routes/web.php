@@ -51,6 +51,10 @@ Route::middleware('admin.auth')->prefix('admin')->name('admin.')->group(function
         Route::post('categories/{category}/fields/{field}/options',                        [CategoryController::class, 'storeOption'])->name('categories.fields.options.store');
         Route::put('categories/{category}/fields/{field}/options/{option}',               [CategoryController::class, 'updateOption'])->name('categories.fields.options.update');
         Route::delete('categories/{category}/fields/{field}/options/{option}',             [CategoryController::class, 'destroyOption'])->name('categories.fields.options.destroy');
+        // جابجایی (reparent) و کپی گروهی
+        Route::patch('categories/{category}/fields/{field}/reparent',                      [CategoryController::class, 'reparentField'])->name('categories.fields.reparent');
+        Route::patch('categories/{category}/fields/{field}/options/{option}/reparent',     [CategoryController::class, 'reparentOption'])->name('categories.fields.options.reparent');
+        Route::post('categories/{category}/fields/{fieldTarget}/options/batch-copy',       [CategoryController::class, 'batchCopyOptions'])->name('categories.fields.options.batch-copy');
     });
 
     // دپارتمان‌ها

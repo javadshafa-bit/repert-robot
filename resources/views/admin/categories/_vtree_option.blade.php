@@ -1,11 +1,16 @@
 {{-- Visual tree: یک گزینه + زیرفیلدهایش --}}
 <div class="vtree-node vtree-option-node"
-     title="{{ $option->label }}"
-     onclick="vtreeEditOption(this)"
+     draggable="true"
+     ondragstart="vtreeDragStart(event,'option',this)"
+     ondragover="vtreeDragOver(event,this)"
+     ondragleave="vtreeDragLeave(event,this)"
+     ondrop="vtreeDrop(event,this)"
+     onclick="vtreeNodeClick(event,this,'option')"
      data-option-id="{{ $option->id }}"
      data-field-id="{{ $option->field_id }}"
      data-label="{{ $option->label }}"
-     style="cursor:pointer">
+     title="{{ $option->label }}"
+     style="cursor:grab">
     <span class="vtree-label">{{ Str::limit($option->label, 18) }}</span>
 </div>
 @if($option->childFields->isNotEmpty())

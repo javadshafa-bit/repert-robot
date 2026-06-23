@@ -146,14 +146,18 @@ class CategoryController extends Controller
         $request->validate([
             'label'       => 'required|string|max:100',
             'description' => 'nullable|string|max:255',
+            'type'        => ['nullable', 'string', Rule::in(['text', 'option', 'photo', 'link'])],
         ]);
 
-        $field->update([
+        $data = [
             'label'       => $request->label,
             'description' => $request->description,
             'is_required' => $request->boolean('is_required'),
             'is_multiple' => $request->boolean('is_multiple'),
-        ]);
+        ];
+        if ($request->filled('type')) $data['type'] = $request->type;
+
+        $field->update($data);
 
         if (request()->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد ویرایش شد.']);
         return back()->with('success', 'فیلد ویرایش شد.');
@@ -200,5 +204,79 @@ class CategoryController extends Controller
         $option->delete();
         if (request()->expectsJson()) return response()->json(['success' => true, 'message' => 'گزینه حذف شد.']);
         return back()->with('success', 'گزینه حذف شد.');
+    }
+
+    // ==========================================
+    // Reparent & Batch Copy
+    // ==========================================
+
+    /** جابجایی یک فیلد زیر option دیگر (یا root اگر null) */
+    public function reparentField(Request $request, Category $category, CategoryField $field)
+    {
+        $request->validate([
+            'parent_option_id' => 'nullable|exists:field_options,id',
+        ]);
+        $field->update(['parent_option_id' => $request->parent_option_id ?: null]);
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد جابجا شد.']);
+        return back()->with('success', 'فیلد جابجا شد.');
+    }
+
+    /** جابجایی یک گزینه زیر field دیگر */
+    public function reparentOption(Request $request, Category $category, CategoryField $field, FieldOption $option)
+    {
+        $request->validate([
+            'field_id' => 'required|exists:category_fields,id',
+        ]);
+        $option->update(['field_id' => $request->field_id]);
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'گزینه جابجا شد.']);
+        return back()->with('success', 'گزینه جابجا شد.');
+    }
+
+    /** کپی عمیق چند گزینه زیر یک field */
+    public function batchCopyOptions(Request $request, Category $category, CategoryField $fieldTarget)
+    {
+        $request->validate([
+            'option_ids'   => 'required|array|min:1',
+            'option_ids.*' => 'exists:field_options,id',
+        ]);
+
+        $sources = FieldOption::with('childFields.options.childFields.options.childFields')
+            ->whereIn('id', $request->option_ids)->get();
+
+        foreach ($sources as $opt) {
+            $this->deepCopyOption($opt, $fieldTarget->id);
+        }
+
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => count($sources) . ' گزینه کپی شد.']);
+        return back()->with('success', 'گزینه‌ها کپی شدند.');
+    }
+
+    private function deepCopyOption(FieldOption $opt, int $newFieldId): void
+    {
+        $newOpt = FieldOption::create([
+            'field_id'   => $newFieldId,
+            'label'      => $opt->label,
+            'sort_order' => FieldOption::where('field_id', $newFieldId)->count(),
+        ]);
+        foreach ($opt->childFields as $cf) {
+            $this->deepCopyField($cf, $newOpt->id);
+        }
+    }
+
+    private function deepCopyField(CategoryField $f, ?int $parentOptId): void
+    {
+        $nf = CategoryField::create([
+            'category_id'      => $f->category_id,
+            'parent_option_id' => $parentOptId,
+            'label'            => $f->label,
+            'description'      => $f->description,
+            'type'             => $f->type,
+            'is_required'      => $f->is_required,
+            'is_multiple'      => $f->is_multiple,
+            'sort_order'       => $f->sort_order,
+        ]);
+        foreach ($f->options as $opt) {
+            $this->deepCopyOption($opt, $nf->id);
+        }
     }
 }
