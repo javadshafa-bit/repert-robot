@@ -28,7 +28,7 @@
     @endforeach
 </ul>
 @endif
-@if($field->relationLoaded('alwaysChildFields') && $field->alwaysChildFields->isNotEmpty())
+@if($field->alwaysChildFields->isNotEmpty())
 {{-- زیرفیلدهای همیشگی — بعد از پاسخ همیشه پرسیده می‌شوند --}}
 <ul class="vtree-always-ul">
     @foreach($field->alwaysChildFields as $child)

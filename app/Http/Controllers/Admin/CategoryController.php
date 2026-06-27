@@ -55,6 +55,12 @@ class CategoryController extends Controller
     {
         // eager load چند سطح عمق — options (شرطی) + alwaysChildFields (همیشگی) در همه سطوح
         return [
+            // standalone paths برای اطمینان از لود شدن مستقیم (safety-net)
+            'alwaysChildFields',
+            'options',
+            'options.childFields',
+            'options.childFields.alwaysChildFields',
+            // nested paths برای عمق بیشتر
             'options.childFields.options.childFields.options.childFields',
             'options.childFields.options.childFields.alwaysChildFields',
             'options.childFields.alwaysChildFields.options.childFields',

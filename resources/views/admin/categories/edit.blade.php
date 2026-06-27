@@ -431,15 +431,22 @@ ul.vtree {
 .vtree-palette-chip:active { cursor: grabbing; }
 
 /* ─── زیرفیلدهای همیشگی ─── */
-.vtree-always-ul {
-    list-style: none; margin: 0; padding: 0;
-    display: flex; flex-direction: column; align-items: center;
-    padding-top: 4px;
+/* specificity بالاتر برای override کردن .vtree ul (0,1,1) */
+.vtree-wrap .vtree-always-ul {
+    list-style: none; margin: 0; padding: 0 !important;
+    padding-top: 4px !important;
+    display: flex !important; flex-direction: column !important; align-items: center !important;
+    justify-content: flex-start !important;
+    position: static !important;
 }
-.vtree-always-ul li {
+.vtree-wrap .vtree-always-ul::before { display: none !important; }
+.vtree-wrap .vtree-always-ul li {
     display: flex; flex-direction: column; align-items: center;
-    padding: 0;
+    padding: 0 !important; position: relative;
 }
+/* حذف خطوط horizontal connector برای always-child li ها */
+.vtree-wrap .vtree-always-ul li::before,
+.vtree-wrap .vtree-always-ul li::after { display: none !important; }
 .vtree-always-connector {
     font-size: 14px; color: #6366f1; line-height: 1;
     padding: 2px 0; user-select: none;
@@ -764,6 +771,8 @@ function vtreeEditField(el) {
     document.getElementById('vp-f-add-opt-wrap').classList.toggle('hidden', el.dataset.type !== 'option');
     document.getElementById('vp-add-opt').classList.add('hidden');
     document.getElementById('vp-ao-label').value = '';
+    document.getElementById('vp-add-always-child').classList.add('hidden');
+    document.getElementById('vp-ac-label').value = '';
     document.getElementById('vp-field').classList.remove('hidden');
     document.getElementById('vp-option').classList.add('hidden');
     vtreePopoverShow(el);
@@ -1162,27 +1171,34 @@ async function _paletteCreateField(parentOptionId, type) {
 }
 
 async function _paletteCreateAlwaysChildField(parentFieldId, type) {
-    const catId  = _catId();
-    const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک' };
-    const label  = labels[type] || 'فیلد جدید';
-    const fd = new FormData();
-    fd.append('label', label);
-    fd.append('type', type);
-    fd.append('parent_field_id', parentFieldId);
-    fd.append('is_required', '1');
-    const res  = await fetch(`/admin/categories/${catId}/fields`, {
-        method: 'POST', body: fd,
-        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
-    });
-    const data = await res.json();
-    if (!data.success) { treeToast('❌ خطا در ایجاد فیلد', false); return; }
-    if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `افزودن "${label}"` });
-    treeToast('✅ زیرفیلد همیشگی ساخته شد — عنوان را ویرایش کنید');
-    await refreshTree();
-    requestAnimationFrame(() => {
-        const el = document.querySelector(`.vtree-node[data-field-id="${data.field_id}"]`);
-        if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditField(el); }
-    });
+    try {
+        const catId  = _catId();
+        const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک' };
+        const label  = labels[type] || 'فیلد جدید';
+        const fd = new FormData();
+        fd.append('label', label);
+        fd.append('type', type);
+        fd.append('parent_field_id', parentFieldId);
+        fd.append('is_required', '1');
+        const res  = await fetch(`/admin/categories/${catId}/fields`, {
+            method: 'POST', body: fd,
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+        });
+        if (!res.ok) { treeToast(`❌ خطای سرور ${res.status}`, false); return; }
+        const data = await res.json();
+        if (!data.success) { treeToast('❌ ' + (data.message || 'خطا در ایجاد فیلد'), false); return; }
+        if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `افزودن "${label}"` });
+        treeToast('✅ زیرفیلد همیشگی ساخته شد — عنوان را ویرایش کنید');
+        await refreshTree();
+        requestAnimationFrame(() => {
+            const el = document.querySelector(`.vtree-node[data-field-id="${data.field_id}"]`);
+            if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditField(el); }
+            else treeToast('⚠️ فیلد ساخته شد ولی در درخت یافت نشد — صفحه را رفرش کنید', false);
+        });
+    } catch (err) {
+        treeToast('❌ خطا: ' + err.message, false);
+        console.error('[always-child] error:', err);
+    }
 }
 
 // ── Palette drag
