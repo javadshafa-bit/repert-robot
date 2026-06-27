@@ -948,29 +948,15 @@ async function vtreeDeleteField() {
     else treeToast('❌ ' + (data.message || 'خطا'), false);
 }
 
-async function vtreeDuplicateField() {
-    const catId = _catId();
-    try {
-        const res  = await fetch(`/admin/categories/${catId}/fields/${_vpFieldId}/duplicate`, {
-            method: 'POST',
-            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-        });
-        if (!res.ok) { treeToast(`❌ خطای سرور ${res.status}`, false); return; }
-        const data = await res.json();
-        if (data.success) {
-            vtreePopoverClose();
-            if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `کپی فیلد` });
-            treeToast('✅ فیلد کپی شد — کپی در همان سطح ایجاد شد');
-            await refreshTree();
-            // اسکرول به فیلد کپی‌شده و باز کردن popover ویرایش
-            requestAnimationFrame(() => {
-                const el = document.querySelector(`.vtree-node[data-field-id="${data.field_id}"]`);
-                if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditField(el); }
-            });
-        } else treeToast('❌ ' + (data.message || 'خطا'), false);
-    } catch (err) {
-        treeToast('❌ خطا: ' + err.message, false);
-    }
+// دکمه کپی در popover → ورود به paste mode (انتخاب مقصد)
+function vtreeDuplicateField() {
+    if (!_vpFieldId) return;
+    _fieldClipboard = [_vpFieldId];
+    vtreePopoverClose();
+    _fieldPasteMode = true;
+    document.getElementById('palette-field-paste-section').style.display = 'flex';
+    document.querySelectorAll('.vtree-node').forEach(n => n.classList.add('vtree-paste-target'));
+    treeToast('روی فیلد مقصد کلیک کنید تا فیلد زیر آن paste شود');
 }
 
 async function vtreeSubmitOption() {
