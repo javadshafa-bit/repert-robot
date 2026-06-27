@@ -162,3 +162,7 @@ function postJson(url, csrf, body) {
         body: JSON.stringify(body),
     }).then(r => r.json())
 }
+
+// expose to global scope so inline onclick= attributes can call them
+window.toggleStep = toggleStep
+window.saveFlow   = saveFlow

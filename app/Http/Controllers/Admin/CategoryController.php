@@ -305,32 +305,4 @@ class CategoryController extends Controller
         }
         return $nf;
     }
-}FieldId)->count(),
-        ]);
-        foreach ($opt->childFields as $cf) {
-            $this->deepCopyField($cf, $newOpt->id);
-        }
-    }
-
-    private function deepCopyField(CategoryField $f, ?int $parentOptId, ?int $parentFieldId = null): CategoryField
-    {
-        $nf = CategoryField::create([
-            'category_id'      => $f->category_id,
-            'parent_option_id' => $parentOptId,
-            'parent_field_id'  => $parentFieldId,
-            'label'            => $f->label . ' (کپی)',
-            'description'      => $f->description,
-            'type'             => $f->type,
-            'is_required'      => $f->is_required,
-            'is_multiple'      => $f->is_multiple,
-            'sort_order'       => $f->sort_order + 1,
-        ]);
-        foreach ($f->options as $opt) {
-            $this->deepCopyOption($opt, $nf->id);
-        }
-        foreach ($f->alwaysChildFields as $child) {
-            $this->deepCopyField($child, null, $nf->id);
-        }
-        return $nf;
-    }
 }

@@ -196,6 +196,38 @@
                     class="py-2 px-3 bg-red-50 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-100">حذف</button>
         </div>
 
+        {{-- add always-child field --}}
+        <div class="mt-3 pt-3 border-t border-gray-100">
+            <button onclick="vtreeToggleAddAlwaysChild()"
+                    class="w-full py-1 border border-dashed border-indigo-300 text-indigo-600 text-xs rounded-lg hover:bg-indigo-50 transition">
+                + افزودن زیرفیلد همیشگی
+            </button>
+            <div id="vp-add-always-child" class="hidden mt-3 space-y-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">عنوان زیرفیلد</label>
+                    <input id="vp-ac-label" type="text" placeholder="مثلاً: توضیحات"
+                           class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">نوع ورودی</label>
+                    <select id="vp-ac-type" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                        <option value="text">متن آزاد</option>
+                        <option value="option">گزینه (شاخه‌ای)</option>
+                        <option value="photo">عکس</option>
+                        <option value="link">لینک</option>
+                    </select>
+                </div>
+                <button onclick="vtreeStoreAlwaysChild()"
+                        style="width:100%;padding:.4rem .75rem;background:#4f46e5;color:#fff;font-size:.75rem;font-weight:600;border-radius:.5rem;border:none;cursor:pointer">
+                    + ثبت زیرفیلد همیشگی
+                </button>
+                <button onclick="document.getElementById('vp-add-always-child').classList.add('hidden');vtreeReposition()"
+                        style="width:100%;padding:.25rem .75rem;font-size:.75rem;color:#9ca3af;border:1px solid #e5e7eb;border-radius:.5rem;background:#fff;cursor:pointer">
+                    انصراف
+                </button>
+            </div>
+        </div>
+
         {{-- add option (only for type=option fields) --}}
         <div id="vp-f-add-opt-wrap" class="hidden mt-4 pt-3 border-t border-gray-100">
             <button onclick="vtreeToggleAddOpt()"

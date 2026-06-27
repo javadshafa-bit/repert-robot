@@ -9,7 +9,7 @@ class BotState extends Model
     protected $fillable = [
         'chat_id', 'step', 'last_message_id', 'representative_id',
         'department_id',
-        'category_id', 'jalali_month', 'current_field_index',
+        'category_id', 'jalali_month',
         'draft_data', 'field_queue',
     ];
 
