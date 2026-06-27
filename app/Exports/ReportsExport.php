@@ -17,21 +17,28 @@ class ReportsExport implements FromArray, WithHeadings, WithTitle, WithStyles
 
     public function __construct(
         private Collection $reports,
-        private string $title = 'گزارش‌ها'
+        private string $title = 'گزارش‌ها',
+        private ?array $categoryFields = null   // اگر null باشد → dynamic از data
     ) {
         $this->build();
     }
 
     private function build(): void
     {
-        // جمع‌آوری همه label های منحصربه‌فرد در ترتیب ظهور
-        $allLabels = [];
-        foreach ($this->reports as $report) {
-            $data = is_array($report->data) ? $report->data : [];
-            foreach ($data as $item) {
-                $label = $item['label'] ?? '';
-                if ($label && !in_array($label, $allLabels)) {
-                    $allLabels[] = $label;
+        // ستون‌های فیلد:
+        // اگر categoryFields داده شده → از تعریف دسته‌بندی (sort_order درست، همه فیلدها حتی بدون جواب)
+        // در غیر این صورت → dynamic از data گزارش‌ها
+        if ($this->categoryFields !== null) {
+            $allLabels = $this->categoryFields;
+        } else {
+            $allLabels = [];
+            foreach ($this->reports as $report) {
+                $data = is_array($report->data) ? $report->data : [];
+                foreach ($data as $item) {
+                    $label = $item['label'] ?? '';
+                    if ($label && !in_array($label, $allLabels)) {
+                        $allLabels[] = $label;
+                    }
                 }
             }
         }
