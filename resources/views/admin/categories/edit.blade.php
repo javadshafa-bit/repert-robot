@@ -1106,6 +1106,30 @@ async function _paletteCreateField(parentOptionId, type) {
     });
 }
 
+async function _paletteCreateAlwaysChildField(parentFieldId, type) {
+    const catId  = _catId();
+    const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک' };
+    const label  = labels[type] || 'فیلد جدید';
+    const fd = new FormData();
+    fd.append('label', label);
+    fd.append('type', type);
+    fd.append('parent_field_id', parentFieldId);
+    fd.append('is_required', '1');
+    const res  = await fetch(`/admin/categories/${catId}/fields`, {
+        method: 'POST', body: fd,
+        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+    });
+    const data = await res.json();
+    if (!data.success) { treeToast('❌ خطا در ایجاد فیلد', false); return; }
+    if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `افزودن "${label}"` });
+    treeToast('✅ زیرفیلد همیشگی ساخته شد — عنوان را ویرایش کنید');
+    await refreshTree();
+    requestAnimationFrame(() => {
+        const el = document.querySelector(`.vtree-node[data-field-id="${data.field_id}"]`);
+        if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditField(el); }
+    });
+}
+
 // ── Palette drag
 function vtreePaletteDrag(e, type) {
     _dndSource = { kind: 'palette', type };
@@ -1148,7 +1172,8 @@ function _dropOk(el) {
     if (_dndSource.kind === 'palette') {
         // palette → روی option: افزودن child field
         // palette → روی field (type=option): افزودن option
-        return isOption || (isField && fType === 'option');
+        // palette → روی field (هر نوع): افزودن زیرفیلد همیشگی
+        return isOption || isField;
     }
     if (_dndSource.kind === 'field') {
         // field → فقط روی option دیگر (جابجایی)
@@ -1179,11 +1204,14 @@ async function vtreeDrop(e, el) {
         _dndSource = null;
 
         if (el.dataset.optionId) {
-            // روی گزینه → فیلد زیرمجموعه با نام پیش‌فرض بساز
+            // روی گزینه → فیلد زیرمجموعه شرطی بساز
             await _paletteCreateField(el.dataset.optionId, palType);
         } else if (el.dataset.fieldId && el.dataset.type === 'option') {
-            // روی فیلد گزینه‌ای → گزینه با نام پیش‌فرض بساز
+            // روی فیلد گزینه‌ای → گزینه جدید بساز
             await _paletteCreateOption(el.dataset.fieldId);
+        } else if (el.dataset.fieldId) {
+            // روی هر فیلد دیگری → زیرفیلد همیشگی بساز
+            await _paletteCreateAlwaysChildField(el.dataset.fieldId, palType);
         }
         return;
     }

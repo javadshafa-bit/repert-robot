@@ -62,7 +62,7 @@ class BotController extends Controller
         $this->showMainMenu($chatId);
     }
 
-    private function processEditedMessage($message): void
+    private function processEditedMessage($message)
     {
         $chatId = $message['chat']['id'];
         $text   = $message['text'] ?? null;
