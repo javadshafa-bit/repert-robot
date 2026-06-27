@@ -53,10 +53,16 @@ class CategoryController extends Controller
 
     private function fieldEagerLoad(): array
     {
-        // eager load چند سطح عمق — options (شرطی) + alwaysChildFields (همیشگی)
+        // eager load چند سطح عمق — options (شرطی) + alwaysChildFields (همیشگی) در همه سطوح
         return [
             'options.childFields.options.childFields.options.childFields',
+            'options.childFields.options.childFields.alwaysChildFields',
+            'options.childFields.alwaysChildFields.options.childFields',
+            'options.childFields.alwaysChildFields.alwaysChildFields',
             'alwaysChildFields.options.childFields.options.childFields',
+            'alwaysChildFields.options.childFields.alwaysChildFields',
+            'alwaysChildFields.alwaysChildFields.options.childFields',
+            'alwaysChildFields.alwaysChildFields.alwaysChildFields',
         ];
     }
 
