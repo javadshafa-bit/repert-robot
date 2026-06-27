@@ -172,9 +172,84 @@
         </div>
 
     </div>
+
+    {{-- Toast --}}
+    <div id="sort-toast" class="hidden fixed bottom-6 left-6 z-50 py-2 px-4 bg-white border border-gray-200 rounded-lg shadow-lg text-sm font-medium text-gray-700"></div>
 @endsection
 
 @push('scripts')
+<script>
+function toggleStep(btn) {
+    const card      = btn.closest('.flow-step-item');
+    const stepKey   = card.dataset.step;
+    const isEnabled = card.dataset.enabled === '1';
+    const newState  = !isEnabled;
+
+    // آپدیت data
+    card.dataset.enabled = newState ? '1' : '0';
+
+    // آپدیت ظاهر کارت
+    const metaColors = {
+        month:      'bg-blue-50 border-blue-200',
+        department: 'bg-orange-50 border-orange-200',
+        category:   'bg-purple-50 border-purple-200',
+    };
+    const activeColor = metaColors[stepKey] || 'bg-gray-50 border-gray-200';
+
+    card.classList.toggle('opacity-50', !newState);
+    card.classList.toggle('bg-gray-50', !newState);
+    card.classList.toggle('border-gray-200', !newState);
+    if (newState) {
+        activeColor.split(' ').forEach(c => card.classList.add(c));
+        card.classList.remove('bg-gray-50', 'border-gray-200');
+    } else {
+        activeColor.split(' ').forEach(c => card.classList.remove(c));
+    }
+
+    // آپدیت متن دکمه
+    btn.textContent = newState ? 'فعال' : 'غیرفعال';
+    btn.className = btn.className
+        .replace(/bg-\S+/g, '').replace(/text-\S+/g, '').trim();
+    if (newState) {
+        btn.classList.add('bg-green-100', 'text-green-700', 'hover:bg-red-100', 'hover:text-red-600');
+    } else {
+        btn.classList.add('bg-gray-200', 'text-gray-400', 'hover:bg-green-100', 'hover:text-green-700');
+    }
+
+    saveFlow();
+}
+
+function saveFlow() {
+    const sortable = document.getElementById('flow-steps-sortable');
+    const url      = sortable.dataset.saveUrl;
+    const csrf     = sortable.dataset.csrf;
+
+    const activeSteps = [...sortable.querySelectorAll('.flow-step-item')]
+        .filter(el => el.dataset.enabled === '1')
+        .map(el => el.dataset.step);
+
+    fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+        body: JSON.stringify({ steps: activeSteps }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        const toast = document.getElementById('sort-toast');
+        if (toast) {
+            toast.textContent = d.success ? '✅ ذخیره شد' : '❌ خطا';
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 2000);
+        }
+        // آپدیت شماره‌های ترتیب
+        let idx = 1;
+        document.querySelectorAll('.flow-step-item').forEach(card => {
+            const num = card.querySelector('.flow-step-number');
+            if (num) num.textContent = card.dataset.enabled === '1' ? idx++ : '–';
+        });
+    });
+}
+</script>
 <style>
     .sortable-drag   { opacity: 0 !important; }
     .sortable-ghost  { opacity: .5; }
