@@ -418,7 +418,8 @@ ul.vtree {
 .vtree-node.vtree-dragging  { opacity: .4; }
 .vtree-node.vtree-drop-ok   { outline: 2.5px dashed #22c55e !important; outline-offset: 3px; background-color: #f0fdf4 !important; transform: scale(1.05); }
 .vtree-node.vtree-drop-no   { outline: 2px dashed #ef4444 !important; outline-offset: 2px; }
-.vtree-node.vtree-selected  { outline: 2.5px solid #6366f1 !important; outline-offset: 2px; }
+.vtree-node.vtree-selected       { outline: 2.5px solid #6366f1 !important; outline-offset: 2px; }
+.vtree-node.vtree-field-selected { outline: 2.5px solid #dc2626 !important; outline-offset: 2px; background-color: #fef2f2 !important; }
 .vtree-node.vtree-paste-target { outline: 2.5px solid #f59e0b !important; outline-offset: 3px; animation: vtree-pulse .8s infinite alternate; }
 @keyframes vtree-pulse { from { box-shadow: 0 0 0 0 rgba(245,158,11,.4); } to { box-shadow: 0 0 0 8px rgba(245,158,11,0); } }
 
@@ -949,17 +950,27 @@ async function vtreeDeleteField() {
 
 async function vtreeDuplicateField() {
     const catId = _catId();
-    const res  = await fetch(`/admin/categories/${catId}/fields/${_vpFieldId}/duplicate`, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-    });
-    const data = await res.json();
-    if (data.success) {
-        vtreePopoverClose();
-        if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `کپی فیلد` });
-        treeToast('✅ فیلد کپی شد');
-        await refreshTree();
-    } else treeToast('❌ ' + (data.message || 'خطا'), false);
+    try {
+        const res  = await fetch(`/admin/categories/${catId}/fields/${_vpFieldId}/duplicate`, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (!res.ok) { treeToast(`❌ خطای سرور ${res.status}`, false); return; }
+        const data = await res.json();
+        if (data.success) {
+            vtreePopoverClose();
+            if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `کپی فیلد` });
+            treeToast('✅ فیلد کپی شد — کپی در همان سطح ایجاد شد');
+            await refreshTree();
+            // اسکرول به فیلد کپی‌شده و باز کردن popover ویرایش
+            requestAnimationFrame(() => {
+                const el = document.querySelector(`.vtree-node[data-field-id="${data.field_id}"]`);
+                if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditField(el); }
+            });
+        } else treeToast('❌ ' + (data.message || 'خطا'), false);
+    } catch (err) {
+        treeToast('❌ خطا: ' + err.message, false);
+    }
 }
 
 async function vtreeSubmitOption() {
@@ -1001,10 +1012,11 @@ document.addEventListener('click', e => {
 });
 
 // ─── Drag & Drop + Multi-select ─────────────────────────────────────────────
-let _dndSource  = null;  // { kind:'palette'|'field'|'option', type?, fieldId?, optionId?, ownerFieldId? }
-let _selected   = [];    // [{ kind, id }]  — multi-select گزینه‌ها
-let _pasteMode  = false;
-let _clipboard  = [];    // option_ids to paste
+let _dndSource      = null;  // { kind:'palette'|'field'|'option', type?, fieldId?, optionId?, ownerFieldId? }
+let _selected       = [];    // [{ kind, id }]  — multi-select گزینه‌ها
+let _selectedFields = [];    // [{ kind, id }]  — multi-select فیلدها (Ctrl+Click)
+let _pasteMode      = false;
+let _clipboard      = [];    // option_ids to paste
 
 // ── Click handler (click vs ctrl+click vs paste-click)
 function vtreeNodeClick(e, el, kind) {
@@ -1029,10 +1041,16 @@ function vtreeNodeClick(e, el, kind) {
         return;
     }
 
-    // ctrl/cmd + click = toggle selection (only options)
+    // ctrl/cmd + click = toggle selection
     if ((e.ctrlKey || e.metaKey) && kind === 'option') {
         e.preventDefault();
         vtreeToggleSelect(el);
+        return;
+    }
+    // ctrl/cmd + click روی فیلد → انتخاب/لغو انتخاب (بدون باز شدن popover)
+    if ((e.ctrlKey || e.metaKey) && kind === 'field') {
+        e.preventDefault();
+        vtreeToggleFieldSelect(el);
         return;
     }
 
@@ -1071,6 +1089,56 @@ function vtreeClearSelection() {
     _selected = [];
     document.querySelectorAll('.vtree-selected').forEach(n => n.classList.remove('vtree-selected'));
     _updatePaletteCopySection();
+}
+
+// ─── انتخاب چندتایی فیلدها با Ctrl+Click ───────────────────────────────────
+function vtreeToggleFieldSelect(el) {
+    const id  = el.dataset.fieldId;
+    const idx = _selectedFields.findIndex(s => s.id === id);
+    if (idx >= 0) {
+        _selectedFields.splice(idx, 1);
+        el.classList.remove('vtree-field-selected');
+    } else {
+        _selectedFields.push({ kind: 'field', id });
+        el.classList.add('vtree-field-selected');
+    }
+    _updatePaletteFieldSection();
+}
+
+function vtreeClearFieldSelection() {
+    _selectedFields = [];
+    document.querySelectorAll('.vtree-field-selected').forEach(n => n.classList.remove('vtree-field-selected'));
+    _updatePaletteFieldSection();
+}
+
+function _updatePaletteFieldSection() {
+    const sec = document.getElementById('palette-field-section');
+    const cnt = document.getElementById('palette-field-count');
+    if (!sec) return;
+    if (_selectedFields.length > 0) {
+        sec.style.display = 'flex';
+        cnt.textContent   = _selectedFields.length + ' فیلد انتخابی';
+    } else {
+        sec.style.display = 'none';
+    }
+}
+
+async function vtreeDeleteSelectedFields() {
+    if (_selectedFields.length === 0) return;
+    if (!confirm(`آیا از حذف ${_selectedFields.length} فیلد اطمینان دارید؟`)) return;
+    const catId = _catId();
+    const ids   = _selectedFields.map(s => s.id);
+    vtreeClearFieldSelection();
+    for (const id of ids) {
+        try {
+            await fetch(`/admin/categories/${catId}/fields/${id}`, {
+                method: 'DELETE',
+                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+            });
+        } catch (err) { console.error('[del-field]', err); }
+    }
+    treeToast(`✅ ${ids.length} فیلد حذف شد`);
+    await refreshTree();
 }
 
 function _updatePaletteCopySection() {

@@ -140,6 +140,9 @@ class BotController extends Controller
 
         } elseif (str_starts_with($data, 'edit_field_')) {
             $this->startEditField($chatId, $state, (int) str_replace('edit_field_', '', $data));
+
+        } elseif ($data === 'go_back') {
+            $this->handleGoBack($chatId, $state);
         }
     }
 
@@ -172,6 +175,64 @@ class BotController extends Controller
         $fieldQueue = $category->fields->pluck('id')->toArray();
         $state->update(['step' => 'answering_field', 'draft_data' => [], 'field_queue' => $fieldQueue]);
         $this->askNextField($chatId, $state);
+    }
+
+    // ==========================================
+    // Back navigation
+    // ==========================================
+
+    private function handleGoBack(string $chatId, BotState $state): void
+    {
+        $step = $state->step;
+
+        // بازگشت از ماه → منوی اصلی (لغو گزارش)
+        if ($step === 'selecting_month') {
+            $state->update(['step' => 'idle', 'jalali_month' => null]);
+            $this->deleteTrackedMessage($chatId, $state);
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        // بازگشت از دپارتمان → مجدداً از ابتدای flow (ماه)
+        if ($step === 'selecting_department') {
+            $state->update(['jalali_month' => null]);
+            $this->deleteTrackedMessage($chatId, $state);
+            $this->askNextFlowStep($chatId, $state);
+            return;
+        }
+
+        // بازگشت از دسته‌بندی → مرحله قبلی در flow (دپارتمان یا ماه)
+        if ($step === 'selecting_category') {
+            $state->update(['department_id' => null]);
+            $this->deleteTrackedMessage($chatId, $state);
+            $this->askNextFlowStep($chatId, $state);
+            return;
+        }
+
+        // بازگشت از پاسخ به فیلد → یک فیلد به عقب
+        if ($step === 'answering_field') {
+            $draft = $state->draft_data ?? [];
+            if (empty($draft)) {
+                // هنوز هیچ فیلدی پاسخ داده نشده → برگرد به انتخاب دسته‌بندی
+                $state->update(['category_id' => null, 'field_queue' => [], 'draft_data' => []]);
+                $this->deleteTrackedMessage($chatId, $state);
+                $this->askNextFlowStep($chatId, $state);
+                return;
+            }
+            // آخرین پاسخ را بردار و فیلدش را به ابتدای صف برگردان
+            $lastItem = array_pop($draft);
+            $queue    = $state->field_queue ?? [];
+            array_unshift($queue, $lastItem['field_id']);
+            $state->update(['draft_data' => $draft, 'field_queue' => $queue]);
+            $this->deleteTrackedMessage($chatId, $state);
+            $this->askNextField($chatId, $state);
+            return;
+        }
+
+        // پیش‌فرض: لغو و رفتن به منوی اصلی
+        $this->deleteTrackedMessage($chatId, $state);
+        $state->update(['step' => 'idle', 'jalali_month' => null, 'department_id' => null, 'category_id' => null, 'draft_data' => [], 'field_queue' => []]);
+        $this->showMainMenu($chatId);
     }
 
     // ==========================================
@@ -252,6 +313,7 @@ class BotController extends Controller
         $now    = Jalalian::now();
         $months = [$now->format('Y-m'), $now->subMonths(1)->format('Y-m'), $now->subMonths(2)->format('Y-m')];
         $inlineKeyboard = array_map(fn($m) => [['text' => 'گزارش ' . $this->formatJalaliMonthName($m), 'callback_data' => "month_$m"]], $months);
+        $inlineKeyboard[] = [['text' => '🔙 انصراف', 'callback_data' => 'go_back']];
         $msgId = $this->sendMessage($chatId, "ماه گزارش را انتخاب کنید:", ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
@@ -261,6 +323,7 @@ class BotController extends Controller
         $departments = Department::where('is_active', true)->orderBy('sort_order')->get();
         if ($departments->isEmpty()) { $this->sendMessage($chatId, "هیچ دپارتمان فعالی وجود ندارد!"); return; }
         $inlineKeyboard = $departments->map(fn($d) => [['text' => $d->name, 'callback_data' => "department_{$d->id}"]])->toArray();
+        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
         $msgId = $this->sendMessage($chatId, "دپارتمان مربوطه را انتخاب کنید:", ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
@@ -270,6 +333,7 @@ class BotController extends Controller
         $categories = Category::where('is_active', true)->orderBy('sort_order')->get();
         if ($categories->isEmpty()) { $this->sendMessage($chatId, "هیچ دسته‌بندی فعالی وجود ندارد!"); return; }
         $inlineKeyboard = $categories->map(fn($c) => [['text' => $c->name, 'callback_data' => "category_{$c->id}"]])->toArray();
+        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
         $msgId = $this->sendMessage($chatId, "نوع گزارش را انتخاب کنید:", ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
@@ -283,7 +347,8 @@ class BotController extends Controller
         if ($field->type === 'option') {
             $this->askOptionField($chatId, $state, $field);
         } else {
-            $msgId = $this->sendMessage($chatId, $this->buildFieldPrompt($field));
+            $backKeyboard = ['inline_keyboard' => [[['text' => '🔙 بازگشت', 'callback_data' => 'go_back']]]];
+            $msgId = $this->sendMessage($chatId, $this->buildFieldPrompt($field), $backKeyboard);
             $state->update(['last_message_id' => $msgId, 'step' => 'answering_field']);
         }
     }
@@ -296,7 +361,8 @@ class BotController extends Controller
         $prompt = "لطفاً یکی را انتخاب کنید:\n\n🔹 *{$field->label}*";
         if ($field->description) $prompt .= "\n📝 _{$field->description}_";
 
-        $inlineKeyboard = $options->map(fn($o) => [['text' => $o->label, 'callback_data' => "opt_{$o->id}"]])->toArray();
+        $inlineKeyboard   = $options->map(fn($o) => [['text' => $o->label, 'callback_data' => "opt_{$o->id}"]])->toArray();
+        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
         $msgId = $this->sendMessage($chatId, $prompt, ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId, 'step' => 'answering_field']);
     }

@@ -61,6 +61,17 @@
                 انصراف
             </button>
         </div>
+        <div id="palette-field-section" style="display:none;align-items:center;gap:.35rem">
+            <span id="palette-field-count" style="font-size:.7rem;color:#dc2626;font-weight:600"></span>
+            <button onclick="vtreeDeleteSelectedFields()"
+                    style="font-size:.7rem;padding:.2rem .55rem;background:#dc2626;color:#fff;border:none;border-radius:.45rem;cursor:pointer">
+                🗑 حذف
+            </button>
+            <button onclick="vtreeClearFieldSelection()"
+                    style="font-size:.7rem;padding:.2rem .45rem;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:.45rem;cursor:pointer">
+                ✕
+            </button>
+        </div>
     </div>
 </div>
 
