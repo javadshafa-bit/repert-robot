@@ -29,18 +29,36 @@ class ReportController extends Controller
         if ($request->filled('department_id'))     $query->where('department_id', $request->department_id);
         if ($request->filled('category_id'))       $query->where('category_id', $request->category_id);
 
-        // فیلتر بر اساس مقدار یک فیلد خاص
-        if ($request->filled('filter_field_id') && $request->filled('filter_value')) {
-            $filterFieldId = (int) $request->filter_field_id;
-            $filterValue   = $request->filter_value;
+        // فیلترهای چندگانه بر اساس فیلدهای گزارش
+        foreach ((array) $request->input('ff', []) as $filter) {
+            if (empty($filter['fid']) || !isset($filter['val']) || $filter['val'] === '') continue;
+            $fid = (int) $filter['fid'];
+            $val = $filter['val'];
+            $op  = $filter['op'] ?? 'contains';
 
-            $query->where(function ($q) use ($filterFieldId, $filterValue) {
-                // جستجو در JSON آرایه
-                $q->whereRaw("EXISTS (
-                    SELECT 1 FROM json_each(data)
-                    WHERE json_extract(json_each.value, '$.field_id') = ?
-                      AND json_extract(json_each.value, '$.value') = ?
-                )", [$filterFieldId, $filterValue]);
+            $query->where(function ($q) use ($fid, $val, $op) {
+                if ($op === 'exact') {
+                    // فیلد گزینه‌ای — تطابق دقیق
+                    $q->whereRaw("EXISTS (
+                        SELECT 1 FROM json_each(data)
+                        WHERE json_extract(json_each.value, '$.field_id') = ?
+                          AND json_extract(json_each.value, '$.value') = ?
+                    )", [$fid, $val]);
+                } elseif ($op === 'has_photo') {
+                    // فیلد عکس — وجود مقدار
+                    $q->whereRaw("EXISTS (
+                        SELECT 1 FROM json_each(data)
+                        WHERE json_extract(json_each.value, '$.field_id') = ?
+                          AND json_extract(json_each.value, '$.value') != ''
+                    )", [$fid]);
+                } else {
+                    // فیلد متنی/لینک — جستجوی حاوی
+                    $q->whereRaw("EXISTS (
+                        SELECT 1 FROM json_each(data)
+                        WHERE json_extract(json_each.value, '$.field_id') = ?
+                          AND json_extract(json_each.value, '$.value') LIKE ?
+                    )", [$fid, '%' . $val . '%']);
+                }
             });
         }
 
@@ -51,24 +69,25 @@ class ReportController extends Controller
         $representatives = Representative::orderBy('first_name')->get();
         $months          = Report::select('jalali_month')->distinct()->orderBy('jalali_month', 'desc')->pluck('jalali_month');
 
-        // فیلدهای قابل فیلتر (فقط اگر category انتخاب شده)
-        $filterFields  = collect();
-        $filterOptions = collect();
-
+        // همه فیلدهای دسته‌بندی انتخابی (برای فیلتر پویا)
+        $filterFields = collect();
+        $fieldsJson   = '[]';
         if ($request->filled('category_id')) {
             $filterFields = CategoryField::where('category_id', $request->category_id)
-                ->where('type', 'option')
+                ->with('options')
+                ->orderBy('sort_order')
                 ->get();
-
-            if ($request->filled('filter_field_id')) {
-                $filterField   = CategoryField::with('options')->find($request->filter_field_id);
-                $filterOptions = $filterField?->options ?? collect();
-            }
+            $fieldsJson = $filterFields->map(fn($f) => [
+                'id'      => $f->id,
+                'label'   => $f->label,
+                'type'    => $f->type,
+                'options' => $f->options->map(fn($o) => ['label' => $o->label])->values(),
+            ])->toJson(JSON_UNESCAPED_UNICODE);
         }
 
         return view('admin.reports.index', compact(
             'reports', 'provinces', 'departments', 'categories', 'representatives', 'months',
-            'filterFields', 'filterOptions'
+            'filterFields', 'fieldsJson'
         ));
     }
 

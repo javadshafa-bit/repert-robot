@@ -71,39 +71,23 @@
         </div>
     </div>
 
-    {{-- فیلتر فیلد خاص (فقط وقتی دسته‌بندی انتخاب شده) --}}
+    {{-- فیلترهای پیشرفته بر اساس فیلدهای گزارش --}}
     @if($filterFields->isNotEmpty())
-    <div class="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-        <div class="sm:col-span-1">
-            <label class="block text-xs font-medium mb-1 text-purple-700">🔍 فیلتر بر اساس گزینه</label>
-            <select name="filter_field_id" onchange="this.form.submit()"
-                    class="py-2 px-3 block w-full border border-purple-300 rounded-lg text-sm bg-purple-50">
-                <option value="">انتخاب فیلد گزینه‌ای...</option>
-                @foreach($filterFields as $ff)
-                    <option value="{{ $ff->id }}" {{ request('filter_field_id') == $ff->id ? 'selected' : '' }}>{{ $ff->label }}</option>
-                @endforeach
-            </select>
+    <div class="mt-3 pt-3 border-t border-gray-100">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-purple-700">🔍 فیلتر بر اساس فیلدهای گزارش</span>
+            <button type="button" onclick="addFieldFilter()"
+                    class="text-xs text-purple-600 hover:text-purple-800 font-medium border border-purple-300 rounded-lg px-2 py-1 bg-purple-50 hover:bg-purple-100 transition">
+                + افزودن فیلتر
+            </button>
         </div>
-        @if($filterOptions->isNotEmpty())
-        <div class="sm:col-span-1">
-            <label class="block text-xs font-medium mb-1 text-purple-700">گزینه</label>
-            <select name="filter_value" class="py-2 px-3 block w-full border border-purple-300 rounded-lg text-sm bg-purple-50">
-                <option value="">همه گزینه‌ها</option>
-                @foreach($filterOptions as $fo)
-                    <option value="{{ $fo->label }}" {{ request('filter_value') == $fo->label ? 'selected' : '' }}>{{ $fo->label }}</option>
-                @endforeach
-            </select>
-        </div>
-        @endif
-        <div class="flex gap-2">
-            <button type="submit" class="py-2 px-4 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700">اعمال فیلتر</button>
-        </div>
+        <div id="field-filter-rows" class="space-y-2"></div>
     </div>
     @endif
 
     <div class="mt-3 flex gap-2">
         <button type="submit" class="py-2 px-4 bg-gray-800 text-white rounded-lg text-sm font-semibold hover:bg-gray-900">فیلتر</button>
-        @if(request()->hasAny(['month','province_id','department_id','category_id','representative_id','filter_field_id','filter_value']))
+        @if(request()->hasAny(['month','province_id','department_id','category_id','representative_id','ff']))
             <a href="{{ route('admin.reports.index') }}" class="py-2 px-3 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">پاک کردن</a>
         @endif
     </div>
@@ -202,5 +186,100 @@ function openDeleteModal(url, label) {
     else if (window.HSOverlay) HSOverlay.open(el);
     else el.classList.remove('hidden');
 }
+
+// ─── فیلترهای پویا بر اساس فیلدهای گزارش ───────────────────────────────────
+const FIELDS_DATA = {!! $fieldsJson ?? '[]' !!};
+let filterRowCount = 0;
+
+function addFieldFilter(initFid, initVal, initOp) {
+    const container = document.getElementById('field-filter-rows');
+    if (!container) return;
+    const idx  = filterRowCount++;
+    const row  = document.createElement('div');
+    row.className = 'flex flex-wrap gap-2 items-center bg-purple-50 border border-purple-200 rounded-lg p-2';
+    row.dataset.idx = idx;
+
+    // --- dropdown انتخاب فیلد ---
+    const sel = document.createElement('select');
+    sel.name      = `ff[${idx}][fid]`;
+    sel.className = 'py-1.5 px-2 border border-purple-300 rounded-lg text-sm bg-white min-w-[160px]';
+    sel.innerHTML = '<option value="">انتخاب فیلد...</option>' +
+        FIELDS_DATA.map(f => `<option value="${f.id}" data-type="${f.type}">${f.label}</option>`).join('');
+    if (initFid) sel.value = initFid;
+
+    // --- container مقدار ---
+    const valWrap = document.createElement('div');
+    valWrap.className = 'flex-1 min-w-[160px]';
+
+    // --- hidden operator ---
+    const opInput = document.createElement('input');
+    opInput.type  = 'hidden';
+    opInput.name  = `ff[${idx}][op]`;
+    opInput.value = initOp || 'contains';
+
+    // --- دکمه حذف ---
+    const removeBtn = document.createElement('button');
+    removeBtn.type      = 'button';
+    removeBtn.textContent = '×';
+    removeBtn.className = 'text-purple-400 hover:text-red-500 text-lg font-bold leading-none px-1';
+    removeBtn.onclick   = () => row.remove();
+
+    row.append(sel, valWrap, opInput, removeBtn);
+    container.appendChild(row);
+
+    // وقتی فیلد انتخاب شد، value input مناسب بساز
+    sel.addEventListener('change', () => buildValueInput(sel, valWrap, opInput, null));
+    if (initFid) buildValueInput(sel, valWrap, opInput, initVal);
+}
+
+function buildValueInput(sel, valWrap, opInput, initVal) {
+    const idx   = sel.name.match(/\[(\d+)\]/)[1];
+    const fid   = parseInt(sel.value);
+    const field = FIELDS_DATA.find(f => f.id === fid);
+    valWrap.innerHTML = '';
+    if (!field) return;
+
+    if (field.type === 'option') {
+        // dropdown گزینه‌ها
+        opInput.value = 'exact';
+        const dd = document.createElement('select');
+        dd.name      = `ff[${idx}][val]`;
+        dd.className = 'py-1.5 px-2 border border-purple-300 rounded-lg text-sm bg-white w-full';
+        dd.innerHTML = '<option value="">همه گزینه‌ها</option>' +
+            field.options.map(o => `<option value="${o.label}">${o.label}</option>`).join('');
+        if (initVal) dd.value = initVal;
+        valWrap.appendChild(dd);
+
+    } else if (field.type === 'photo') {
+        // عکس — دارد/ندارد
+        opInput.value = 'has_photo';
+        const dd = document.createElement('select');
+        dd.name      = `ff[${idx}][val]`;
+        dd.className = 'py-1.5 px-2 border border-purple-300 rounded-lg text-sm bg-white w-full';
+        dd.innerHTML = '<option value="1">دارد عکس</option>';
+        valWrap.appendChild(dd);
+
+    } else {
+        // text / link — جستجوی آزاد
+        opInput.value = 'contains';
+        const inp = document.createElement('input');
+        inp.type        = 'text';
+        inp.name        = `ff[${idx}][val]`;
+        inp.placeholder = 'جستجو در پاسخ‌ها...';
+        inp.className   = 'py-1.5 px-2 border border-purple-300 rounded-lg text-sm bg-white w-full';
+        if (initVal) inp.value = initVal;
+        valWrap.appendChild(inp);
+    }
+}
+
+// بازسازی ردیف‌های فیلتر از request جاری (هنگام reload صفحه)
+document.addEventListener('DOMContentLoaded', () => {
+    const existing = @json(request()->input('ff', []));
+    if (Array.isArray(existing) && existing.length > 0) {
+        existing.forEach(f => {
+            if (f && f.fid) addFieldFilter(String(f.fid), f.val ?? '', f.op ?? 'contains');
+        });
+    }
+});
 </script>
 @endsection
