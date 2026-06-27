@@ -63,7 +63,7 @@
         </div>
         <div id="palette-field-section" style="display:none;align-items:center;gap:.35rem">
             <span id="palette-field-count" style="font-size:.7rem;color:#6366f1;font-weight:600"></span>
-            <button onclick="vtreeBatchDuplicateFields()"
+            <button onclick="vtreeEnterFieldPasteMode()"
                     style="font-size:.7rem;padding:.2rem .55rem;background:#6366f1;color:#fff;border:none;border-radius:.45rem;cursor:pointer">
                 📋 کپی
             </button>
@@ -74,6 +74,13 @@
             <button onclick="vtreeClearFieldSelection()"
                     style="font-size:.7rem;padding:.2rem .45rem;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:.45rem;cursor:pointer">
                 ✕
+            </button>
+        </div>
+        <div id="palette-field-paste-section" style="display:none;align-items:center;gap:.35rem">
+            <span style="font-size:.7rem;color:#0891b2;font-weight:600">روی فیلد مقصد کلیک کنید ← paste</span>
+            <button onclick="vtreeCancelFieldPaste()"
+                    style="font-size:.7rem;padding:.2rem .45rem;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:.45rem;cursor:pointer">
+                انصراف
             </button>
         </div>
     </div>

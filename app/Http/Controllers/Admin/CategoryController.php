@@ -237,12 +237,25 @@ class CategoryController extends Controller
         return back()->with('success', 'فیلد جابجا شد.');
     }
 
-    /** کپی فیلد — فقط خود فیلد و گزینه‌هایش (بدون always-children) */
+    /** کپی فیلد — فقط خود فیلد و گزینه‌هایش (بدون always-children)
+     *  اگر parent_field_id در request باشد → کپی به عنوان always-child آن فیلد
+     *  در غیر این صورت → sibling در همان سطح اصلی
+     */
     public function duplicateField(Request $request, Category $category, CategoryField $field)
     {
-        // عمداً alwaysChildFields لود نمی‌شود تا کپی تمیز باشد (بدون زیرفیلد همیشگی اضافی)
         $field->load('options.childFields.options.childFields');
-        $newField = $this->deepCopyField($field, $field->parent_option_id, $field->parent_field_id);
+
+        if ($request->filled('parent_field_id')) {
+            // paste به عنوان always-child فیلد مقصد
+            $parentFieldId  = (int) $request->parent_field_id;
+            $parentOptionId = null;
+        } else {
+            // sibling در همان سطح
+            $parentFieldId  = $field->parent_field_id;
+            $parentOptionId = $field->parent_option_id;
+        }
+
+        $newField = $this->deepCopyField($field, $parentOptionId, $parentFieldId);
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد کپی شد.', 'field_id' => $newField->id]);
         return back()->with('success', 'فیلد کپی شد.');
     }

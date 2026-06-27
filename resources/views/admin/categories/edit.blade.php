@@ -1012,24 +1012,23 @@ document.addEventListener('click', e => {
 });
 
 // ─── Drag & Drop + Multi-select ─────────────────────────────────────────────
-let _dndSource      = null;  // { kind:'palette'|'field'|'option', type?, fieldId?, optionId?, ownerFieldId? }
-let _selected       = [];    // [{ kind, id }]  — multi-select گزینه‌ها
-let _selectedFields = [];    // [{ kind, id }]  — multi-select فیلدها (Ctrl+Click)
-let _pasteMode      = false;
-let _clipboard      = [];    // option_ids to paste
+let _dndSource        = null;  // { kind:'palette'|'field'|'option', type?, fieldId?, optionId?, ownerFieldId? }
+let _selected         = [];    // [{ kind, id }]  — multi-select گزینه‌ها
+let _selectedFields   = [];    // [{ kind, id }]  — multi-select فیلدها (Ctrl+Click)
+let _pasteMode        = false;
+let _clipboard        = [];    // option_ids to paste
+let _fieldPasteMode   = false;
+let _fieldClipboard   = [];    // field_ids to paste as always-children
 
 // ── Click handler (click vs ctrl+click vs paste-click)
 function vtreeNodeClick(e, el, kind) {
     e.stopPropagation();
 
-    // paste mode
+    // paste mode — option paste
     if (_pasteMode) {
         if (kind === 'field' && el.dataset.type === 'option') {
-            // کلیک مستقیم روی یک فیلد گزینه‌ای
             vtreePasteHere(el);
         } else if (kind === 'option') {
-            // کاربر روی یک گزینه (option node) کلیک کرده
-            // دنبال فیلد گزینه‌ای فرزند آن می‌گردیم
             const li = el.closest('li');
             const childField = li?.querySelector(':scope > ul .vtree-node[data-type="option"]');
             if (childField) {
@@ -1037,6 +1036,14 @@ function vtreeNodeClick(e, el, kind) {
             } else {
                 treeToast('❌ این گزینه، فیلد شاخه‌ای ندارد. ابتدا یک فیلد از نوع «گزینه» زیر آن بسازید.', false);
             }
+        }
+        return;
+    }
+
+    // paste mode — field paste (always-child)
+    if (_fieldPasteMode) {
+        if (kind === 'field') {
+            vtreePasteFieldsHere(el);
         }
         return;
     }
@@ -1123,22 +1130,48 @@ function _updatePaletteFieldSection() {
     }
 }
 
-async function vtreeBatchDuplicateFields() {
+// ورود به حالت paste برای فیلدهای انتخابی
+function vtreeEnterFieldPasteMode() {
     if (_selectedFields.length === 0) return;
-    const catId = _catId();
-    const ids   = _selectedFields.map(s => s.id);
+    _fieldClipboard = _selectedFields.map(s => s.id);
     vtreeClearFieldSelection();
+    _fieldPasteMode = true;
+    document.getElementById('palette-field-section').style.display      = 'none';
+    document.getElementById('palette-field-paste-section').style.display = 'flex';
+    // هایلایت همه فیلدها به عنوان target
+    document.querySelectorAll('.vtree-node').forEach(n => n.classList.add('vtree-paste-target'));
+    treeToast('روی فیلد مقصد کلیک کنید تا فیلدها به عنوان زیرفیلد همیشگی paste شوند');
+}
+
+function vtreeCancelFieldPaste() {
+    _fieldPasteMode = false;
+    _fieldClipboard = [];
+    document.getElementById('palette-field-paste-section').style.display = 'none';
+    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+}
+
+async function vtreePasteFieldsHere(targetEl) {
+    const targetFieldId = targetEl.dataset.fieldId;
+    const catId         = _catId();
+    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+    document.getElementById('palette-field-paste-section').style.display = 'none';
+    _fieldPasteMode = false;
+
+    const ids = [..._fieldClipboard];
+    _fieldClipboard = [];
     let count = 0;
     for (const id of ids) {
         try {
+            const fd = new FormData();
+            fd.append('parent_field_id', targetFieldId);
             const res = await fetch(`/admin/categories/${catId}/fields/${id}/duplicate`, {
-                method: 'POST',
+                method: 'POST', body: fd,
                 headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
             });
             if (res.ok) count++;
-        } catch (err) { console.error('[dup-field]', err); }
+        } catch (err) { console.error('[field-paste]', err); }
     }
-    treeToast(`✅ ${count} فیلد کپی شد`);
+    treeToast(`✅ ${count} فیلد به عنوان زیرفیلد همیشگی paste شد`);
     await refreshTree();
 }
 
