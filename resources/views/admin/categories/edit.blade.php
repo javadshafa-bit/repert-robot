@@ -189,6 +189,9 @@
         <div class="flex gap-2 mt-4">
             <button onclick="vtreeSubmitField()"
                     class="flex-1 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">ذخیره</button>
+            <button onclick="vtreeDuplicateField()"
+                    title="کپی این فیلد با همه زیرمجموعه‌هایش"
+                    class="py-2 px-3 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded-lg hover:bg-indigo-100">📋</button>
             <button onclick="vtreeDeleteField()"
                     class="py-2 px-3 bg-red-50 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-100">حذف</button>
         </div>
@@ -303,8 +306,11 @@
     min-height: 500px;
     max-height: 75vh;
     scrollbar-width: thin;
-    scrollbar-color: #c7d2fe #f3f4f6;
+    scrollbar-color: #c7d2fe #e0e7ff;
     cursor: grab;
+    background: #eef2ff;
+    background-image: radial-gradient(#c7d2fe 1px, transparent 1px);
+    background-size: 24px 24px;
 }
 .vtree-wrap::-webkit-scrollbar { height: 8px; }
 .vtree-wrap::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 4px; }
@@ -562,7 +568,7 @@ async function vtreeUndo() {
 
         else if (action.type === 'reparent_field') {
             const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/reparent`, 'PATCH',
-                { parent_option_id: action.oldParentOptionId }, true);
+                { parent_option_id: action.oldParentOptionId ?? null, parent_field_id: action.oldParentFieldId ?? null }, true);
             ok = d.success;
         }
 
@@ -765,8 +771,10 @@ async function vtreeStoreAlwaysChild() {
         headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
     });
     const data = await res.json();
-    if (data.success) { vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree(); }
-    else treeToast('❌ ' + (data.message || 'خطا'), false);
+    if (data.success) {
+        if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `افزودن زیرفیلد "${label}"` });
+        vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree();
+    } else treeToast('❌ ' + (data.message || 'خطا'), false);
 }
 
 function vtreeToggleAddOpt() {
@@ -896,6 +904,21 @@ async function vtreeDeleteField() {
     const data = await res.json();
     if (data.success) { vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree(); }
     else treeToast('❌ ' + (data.message || 'خطا'), false);
+}
+
+async function vtreeDuplicateField() {
+    const catId = _catId();
+    const res  = await fetch(`/admin/categories/${catId}/fields/${_vpFieldId}/duplicate`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    const data = await res.json();
+    if (data.success) {
+        vtreePopoverClose();
+        if (data.field_id) _pushUndo({ type: 'add_field', fieldId: data.field_id, label: `کپی فیلد` });
+        treeToast('✅ فیلد کپی شد');
+        await refreshTree();
+    } else treeToast('❌ ' + (data.message || 'خطا'), false);
 }
 
 async function vtreeSubmitOption() {
@@ -1140,7 +1163,13 @@ function vtreePaletteDrag(e, type) {
 function vtreeDragStart(e, kind, el) {
     e.stopPropagation();
     if (kind === 'field') {
-        _dndSource = { kind: 'field', fieldId: el.dataset.fieldId, type: el.dataset.type };
+        _dndSource = {
+            kind: 'field',
+            fieldId: el.dataset.fieldId,
+            type: el.dataset.type,
+            oldParentOptionId: el.dataset.parentOptionId || null,
+            oldParentFieldId:  el.dataset.parentFieldId  || null,
+        };
     } else {
         _dndSource = { kind: 'option', optionId: el.dataset.optionId, ownerFieldId: el.dataset.fieldId };
     }
@@ -1176,8 +1205,9 @@ function _dropOk(el) {
         return isOption || isField;
     }
     if (_dndSource.kind === 'field') {
-        // field → فقط روی option دیگر (جابجایی)
-        return isOption;
+        // field → روی option (جابجایی) یا روی field دیگر (تبدیل به always-child)
+        const notSelf = el.dataset.fieldId !== _dndSource.fieldId;
+        return notSelf && (isOption || isField);
     }
     if (_dndSource.kind === 'option') {
         // option → فقط روی field (type=option) دیگر
@@ -1216,21 +1246,26 @@ async function vtreeDrop(e, el) {
         return;
     }
 
-    // ── Field reparent
-    if (_dndSource.kind === 'field' && el.dataset.optionId) {
-        // موقعیت قبلی: پیدا کردن parent_option_id فعلی از DOM
-        const fieldEl  = document.querySelector(`.vtree-node[data-field-id="${_dndSource.fieldId}"]`);
-        const oldParent = fieldEl?.closest('li')?.closest('ul')?.closest('li')
-            ?.querySelector(':scope > .vtree-node[data-option-id]')?.dataset.optionId ?? null;
+    // ── Field reparent (روی option یا روی field برای always-child)
+    if (_dndSource.kind === 'field' && (el.dataset.optionId || el.dataset.fieldId)) {
+        const body = el.dataset.optionId
+            ? { parent_option_id: el.dataset.optionId, parent_field_id: null }
+            : { parent_option_id: null, parent_field_id: el.dataset.fieldId };
         const res = await fetch(`/admin/categories/${catId}/fields/${_dndSource.fieldId}/reparent`, {
             method: 'PATCH',
-            body: JSON.stringify({ parent_option_id: el.dataset.optionId }),
+            body: JSON.stringify(body),
             headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
         });
         const d = await res.json();
         ok = d.success;
         if (ok) {
-            _pushUndo({ type: 'reparent_field', fieldId: _dndSource.fieldId, oldParentOptionId: oldParent, label: 'جابجایی فیلد' });
+            _pushUndo({
+                type: 'reparent_field',
+                fieldId: _dndSource.fieldId,
+                oldParentOptionId: _dndSource.oldParentOptionId,
+                oldParentFieldId:  _dndSource.oldParentFieldId,
+                label: 'جابجایی فیلد',
+            });
             treeToast('✅ فیلد جابجا شد');
         } else treeToast('❌ ' + (d.message || 'خطا'), false);
     }

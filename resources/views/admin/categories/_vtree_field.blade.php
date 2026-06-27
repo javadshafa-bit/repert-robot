@@ -12,6 +12,8 @@
      data-type="{{ $field->type }}"
      data-is-required="{{ $field->is_required ? '1' : '0' }}"
      data-is-multiple="{{ $field->is_multiple ? '1' : '0' }}"
+     data-parent-option-id="{{ $field->parent_option_id ?? '' }}"
+     data-parent-field-id="{{ $field->parent_field_id ?? '' }}"
      title="{{ $field->label }}{{ $field->description ? ' — '.$field->description : '' }}"
      style="cursor:grab">
     <span class="vtree-badge">{{ $field->type_fa }}@if($field->is_multiple) ×چند@endif</span>

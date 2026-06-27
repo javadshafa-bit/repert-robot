@@ -221,10 +221,23 @@ class CategoryController extends Controller
     {
         $request->validate([
             'parent_option_id' => 'nullable|exists:field_options,id',
+            'parent_field_id'  => 'nullable|exists:category_fields,id',
         ]);
-        $field->update(['parent_option_id' => $request->parent_option_id ?: null]);
+        $field->update([
+            'parent_option_id' => $request->parent_option_id ?: null,
+            'parent_field_id'  => $request->parent_field_id  ?: null,
+        ]);
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد جابجا شد.']);
         return back()->with('success', 'فیلد جابجا شد.');
+    }
+
+    /** کپی عمیق یک فیلد با همه زیرمجموعه‌هایش */
+    public function duplicateField(Request $request, Category $category, CategoryField $field)
+    {
+        $field->load('options.childFields.options.childFields', 'alwaysChildFields.options.childFields');
+        $newField = $this->deepCopyField($field, $field->parent_option_id, $field->parent_field_id);
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد کپی شد.', 'field_id' => $newField->id]);
+        return back()->with('success', 'فیلد کپی شد.');
     }
 
     /** جابجایی یک گزینه زیر field دیگر */
@@ -265,24 +278,59 @@ class CategoryController extends Controller
             'sort_order' => FieldOption::where('field_id', $newFieldId)->count(),
         ]);
         foreach ($opt->childFields as $cf) {
-            $this->deepCopyField($cf, $newOpt->id);
+            $this->deepCopyField($cf, $newOpt->id, null);
         }
     }
 
-    private function deepCopyField(CategoryField $f, ?int $parentOptId): void
+    private function deepCopyField(CategoryField $f, ?int $parentOptId, ?int $parentFieldId = null): CategoryField
     {
         $nf = CategoryField::create([
             'category_id'      => $f->category_id,
             'parent_option_id' => $parentOptId,
-            'label'            => $f->label,
+            'parent_field_id'  => $parentFieldId,
+            'label'            => $f->label . ' (کپی)',
             'description'      => $f->description,
             'type'             => $f->type,
             'is_required'      => $f->is_required,
             'is_multiple'      => $f->is_multiple,
-            'sort_order'       => $f->sort_order,
+            'sort_order'       => $f->sort_order + 1,
         ]);
         foreach ($f->options as $opt) {
             $this->deepCopyOption($opt, $nf->id);
         }
+        if ($f->relationLoaded('alwaysChildFields')) {
+            foreach ($f->alwaysChildFields as $child) {
+                $this->deepCopyField($child, null, $nf->id);
+            }
+        }
+        return $nf;
+    }
+}FieldId)->count(),
+        ]);
+        foreach ($opt->childFields as $cf) {
+            $this->deepCopyField($cf, $newOpt->id);
+        }
+    }
+
+    private function deepCopyField(CategoryField $f, ?int $parentOptId, ?int $parentFieldId = null): CategoryField
+    {
+        $nf = CategoryField::create([
+            'category_id'      => $f->category_id,
+            'parent_option_id' => $parentOptId,
+            'parent_field_id'  => $parentFieldId,
+            'label'            => $f->label . ' (کپی)',
+            'description'      => $f->description,
+            'type'             => $f->type,
+            'is_required'      => $f->is_required,
+            'is_multiple'      => $f->is_multiple,
+            'sort_order'       => $f->sort_order + 1,
+        ]);
+        foreach ($f->options as $opt) {
+            $this->deepCopyOption($opt, $nf->id);
+        }
+        foreach ($f->alwaysChildFields as $child) {
+            $this->deepCopyField($child, null, $nf->id);
+        }
+        return $nf;
     }
 }

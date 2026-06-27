@@ -55,6 +55,7 @@ Route::middleware('admin.auth')->prefix('admin')->name('admin.')->group(function
         Route::patch('categories/{category}/fields/{field}/reparent',                      [CategoryController::class, 'reparentField'])->name('categories.fields.reparent');
         Route::patch('categories/{category}/fields/{field}/options/{option}/reparent',     [CategoryController::class, 'reparentOption'])->name('categories.fields.options.reparent');
         Route::post('categories/{category}/fields/{fieldTarget}/options/batch-copy',       [CategoryController::class, 'batchCopyOptions'])->name('categories.fields.options.batch-copy');
+        Route::post('categories/{category}/fields/{field}/duplicate',                      [CategoryController::class, 'duplicateField'])->name('categories.fields.duplicate');
     });
 
     // دپارتمان‌ها
