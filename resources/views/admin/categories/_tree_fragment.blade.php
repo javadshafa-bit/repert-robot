@@ -62,7 +62,11 @@
             </button>
         </div>
         <div id="palette-field-section" style="display:none;align-items:center;gap:.35rem">
-            <span id="palette-field-count" style="font-size:.7rem;color:#dc2626;font-weight:600"></span>
+            <span id="palette-field-count" style="font-size:.7rem;color:#6366f1;font-weight:600"></span>
+            <button onclick="vtreeBatchDuplicateFields()"
+                    style="font-size:.7rem;padding:.2rem .55rem;background:#6366f1;color:#fff;border:none;border-radius:.45rem;cursor:pointer">
+                📋 کپی
+            </button>
             <button onclick="vtreeDeleteSelectedFields()"
                     style="font-size:.7rem;padding:.2rem .55rem;background:#dc2626;color:#fff;border:none;border-radius:.45rem;cursor:pointer">
                 🗑 حذف

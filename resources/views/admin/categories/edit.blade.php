@@ -1123,6 +1123,25 @@ function _updatePaletteFieldSection() {
     }
 }
 
+async function vtreeBatchDuplicateFields() {
+    if (_selectedFields.length === 0) return;
+    const catId = _catId();
+    const ids   = _selectedFields.map(s => s.id);
+    vtreeClearFieldSelection();
+    let count = 0;
+    for (const id of ids) {
+        try {
+            const res = await fetch(`/admin/categories/${catId}/fields/${id}/duplicate`, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+            });
+            if (res.ok) count++;
+        } catch (err) { console.error('[dup-field]', err); }
+    }
+    treeToast(`✅ ${count} فیلد کپی شد`);
+    await refreshTree();
+}
+
 async function vtreeDeleteSelectedFields() {
     if (_selectedFields.length === 0) return;
     if (!confirm(`آیا از حذف ${_selectedFields.length} فیلد اطمینان دارید؟`)) return;
