@@ -249,13 +249,17 @@ class CategoryController extends Controller
             // paste به عنوان always-child فیلد مقصد
             $parentFieldId  = (int) $request->parent_field_id;
             $parentOptionId = null;
+            // sort_order بر اساس تعداد فرزندان موجود + شاخص paste
+            $baseSortOrder = CategoryField::where('parent_field_id', $parentFieldId)->max('sort_order') ?? -1;
+            $sortOrder     = $baseSortOrder + 1 + (int) $request->input('paste_index', 0);
         } else {
             // sibling در همان سطح
             $parentFieldId  = $field->parent_field_id;
             $parentOptionId = $field->parent_option_id;
+            $sortOrder      = $field->sort_order + 1;
         }
 
-        $newField = $this->deepCopyField($field, $parentOptionId, $parentFieldId);
+        $newField = $this->deepCopyField($field, $parentOptionId, $parentFieldId, $sortOrder);
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد کپی شد.', 'field_id' => $newField->id]);
         return back()->with('success', 'فیلد کپی شد.');
     }
@@ -302,7 +306,7 @@ class CategoryController extends Controller
         }
     }
 
-    private function deepCopyField(CategoryField $f, ?int $parentOptId, ?int $parentFieldId = null): CategoryField
+    private function deepCopyField(CategoryField $f, ?int $parentOptId, ?int $parentFieldId = null, ?int $sortOrder = null): CategoryField
     {
         $nf = CategoryField::create([
             'category_id'      => $f->category_id,
@@ -313,7 +317,7 @@ class CategoryController extends Controller
             'type'             => $f->type,
             'is_required'      => $f->is_required,
             'is_multiple'      => $f->is_multiple,
-            'sort_order'       => $f->sort_order + 1,
+            'sort_order'       => $sortOrder ?? ($f->sort_order + 1),
         ]);
         foreach ($f->options as $opt) {
             $this->deepCopyOption($opt, $nf->id);

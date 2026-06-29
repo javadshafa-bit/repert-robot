@@ -1119,7 +1119,15 @@ function _updatePaletteFieldSection() {
 // ورود به حالت paste برای فیلدهای انتخابی
 function vtreeEnterFieldPasteMode() {
     if (_selectedFields.length === 0) return;
-    _fieldClipboard = _selectedFields.map(s => s.id);
+    // مرتب‌سازی بر اساس ترتیب ظهور در درخت (نه ترتیب کلیک)
+    const allNodes = [...document.querySelectorAll('.vtree-node[data-field-id]')];
+    _fieldClipboard = _selectedFields
+        .map(s => s.id)
+        .sort((a, b) => {
+            const ia = allNodes.findIndex(n => n.dataset.fieldId === a);
+            const ib = allNodes.findIndex(n => n.dataset.fieldId === b);
+            return ia - ib;
+        });
     vtreeClearFieldSelection();
     _fieldPasteMode = true;
     document.getElementById('palette-field-section').style.display      = 'none';
@@ -1146,11 +1154,12 @@ async function vtreePasteFieldsHere(targetEl) {
     const ids = [..._fieldClipboard];
     _fieldClipboard = [];
     let count = 0;
-    for (const id of ids) {
+    for (let i = 0; i < ids.length; i++) {
         try {
             const fd = new FormData();
             fd.append('parent_field_id', targetFieldId);
-            const res = await fetch(`/admin/categories/${catId}/fields/${id}/duplicate`, {
+            fd.append('paste_index', i);   // ترتیب paste برای sort_order صحیح
+            const res = await fetch(`/admin/categories/${catId}/fields/${ids[i]}/duplicate`, {
                 method: 'POST', body: fd,
                 headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
             });
