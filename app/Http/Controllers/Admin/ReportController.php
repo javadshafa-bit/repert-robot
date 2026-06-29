@@ -80,13 +80,30 @@ class ReportController extends Controller
         $fieldsJson   = '[]';
         if ($request->filled('category_id')) {
             $filterFields = CategoryField::where('category_id', $request->category_id)
-                ->with('options')
+                ->with('options:id,field_id,label,sort_order')
                 ->orderBy('sort_order')
                 ->get();
+
+            // محاسبه عمق هر فیلد در درخت برای نمایش indent
+            $depthCache = [];
+            $getDepth   = function ($field) use (&$getDepth, $filterFields, &$depthCache) {
+                if (isset($depthCache[$field->id])) return $depthCache[$field->id];
+                if (!$field->parent_field_id && !$field->parent_option_id) {
+                    return $depthCache[$field->id] = 0;
+                }
+                if ($field->parent_field_id) {
+                    $parent = $filterFields->firstWhere('id', $field->parent_field_id);
+                    return $depthCache[$field->id] = ($parent ? $getDepth($parent) + 1 : 1);
+                }
+                $parentField = $filterFields->first(fn($f) => $f->options->contains('id', $field->parent_option_id));
+                return $depthCache[$field->id] = ($parentField ? $getDepth($parentField) + 1 : 1);
+            };
+
             $fieldsJson = $filterFields->map(fn($f) => [
                 'id'      => $f->id,
                 'label'   => $f->label,
                 'type'    => $f->type,
+                'depth'   => $getDepth($f),
                 'options' => $f->options->map(fn($o) => ['label' => $o->label])->values(),
             ])->toJson(JSON_UNESCAPED_UNICODE);
         }

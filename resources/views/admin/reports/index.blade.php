@@ -204,7 +204,10 @@ function addFieldFilter(initFid, initVal, initOp) {
     sel.name      = `ff[${idx}][fid]`;
     sel.className = 'py-1.5 px-2 border border-purple-300 rounded-lg text-sm bg-white min-w-[160px]';
     sel.innerHTML = '<option value="">انتخاب فیلد...</option>' +
-        FIELDS_DATA.map(f => `<option value="${f.id}" data-type="${f.type}">${f.label}</option>`).join('');
+        FIELDS_DATA.map(f => {
+            const indent = '— '.repeat(f.depth || 0);
+            return `<option value="${f.id}" data-type="${f.type}">${indent}${f.label}</option>`;
+        }).join('');
     if (initFid) sel.value = initFid;
 
     // --- container مقدار ---
