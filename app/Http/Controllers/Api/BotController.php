@@ -122,23 +122,23 @@ class BotController extends Controller
             $this->deleteTrackedMessage($chatId, $state);
             $this->askNextFlowStep($chatId, $state);
 
-        } elseif (str_starts_with($data, 'opt_')) {
+        } elseif (str_starts_with($data, 'opt_') && in_array($state->step, ['answering_field', 'editing_field'])) {
             $this->handleOptionSelected($chatId, $state, (int) str_replace('opt_', '', $data));
 
-        } elseif ($data === 'field_multiple_done') {
+        } elseif ($data === 'field_multiple_done' && $state->step === 'answering_field') {
             $this->handleMultipleDone($chatId, $state, false);
 
-        } elseif ($data === 'field_multiple_done_edit') {
+        } elseif ($data === 'field_multiple_done_edit' && $state->step === 'editing_field') {
             $this->handleMultipleDone($chatId, $state, true);
 
-        } elseif ($data === 'confirm_report') {
+        } elseif ($data === 'confirm_report' && $state->step === 'preview') {
             $this->saveFinalReport($chatId, $state);
 
-        } elseif ($data === 'request_edit') {
+        } elseif ($data === 'request_edit' && $state->step === 'preview') {
             $this->deleteTrackedMessage($chatId, $state);
             $this->showEditOptions($chatId, $state);
 
-        } elseif (str_starts_with($data, 'edit_field_')) {
+        } elseif (str_starts_with($data, 'edit_field_') && $state->step === 'preview') {
             $this->startEditField($chatId, $state, (int) str_replace('edit_field_', '', $data));
 
         } elseif ($data === 'go_back') {
@@ -380,11 +380,26 @@ class BotController extends Controller
         $draft[] = ['field_id' => $option->field->id, 'label' => $option->field->label, 'type' => 'option', 'value' => $option->label, 'option_id' => $option->id];
 
         $this->popField($state);
-        // ترتیب: ابتدا alwaysChildFields فیلد والد، سپس childFields گزینه انتخابی
-        // نتیجه: [option_children, always_children, ...rest]
+
+        // ─── DEBUG LOG ───────────────────────────────────────────────
+        $optionChildIds  = $option->childFields()->orderBy('sort_order')->pluck('id')->toArray();
+        $alwaysChildIds  = $option->field->alwaysChildFields()->pluck('id')->toArray();
+        Log::info('[BOT_OPTION] chat=' . $chatId
+            . ' | option_id=' . $option->id
+            . ' | option_label=' . $option->label
+            . ' | parent_field_id=' . $option->field->id
+            . ' | parent_field_label=' . $option->field->label
+            . ' | option_childFields=' . json_encode($optionChildIds)
+            . ' | always_childFields=' . json_encode($alwaysChildIds)
+            . ' | queue_before=' . json_encode($state->field_queue ?? [])
+        );
+        // ─────────────────────────────────────────────────────────────
+
         $this->prependAlwaysChildFields($state, $option->field);
         $this->prependOptionFields($state, $option);
         $state->update(['draft_data' => $draft]);
+
+        Log::info('[BOT_OPTION] queue_after=' . json_encode($state->field_queue ?? []));
 
         $this->deleteTrackedMessage($chatId, $state);
         $this->askNextField($chatId, $state);
