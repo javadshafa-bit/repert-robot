@@ -371,25 +371,28 @@ ul.vtree {
     transform: translateX(-1px);
     width: 2px; height: 36px; background: #d1d5db;
 }
-/* فضای بین خط افقی و بالای کارت */
+/* همه li‌ها */
 .vtree li {
     display: flex; flex-direction: column; align-items: center;
     padding: 0 12px;
-    padding-top: 16px;
     position: relative;
 }
-/* خطوط افقی بین برادرها — در فاصله padding-top */
-.vtree li::before, .vtree li::after {
+/* فقط li‌های فرزند (نه ریشه، نه always-ul) — فضا برای stub و خط افقی */
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li {
+    padding-top: 16px;
+}
+/* خطوط افقی بین برادرها — فقط در li‌های فرزند */
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li::before,
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li::after {
     content: ''; position: absolute; top: 0;
     border-top: 2px solid #d1d5db; width: 50%;
 }
-.vtree li::before { right: 50%; }
-.vtree li::after  { left: 50%; }
-.vtree li:first-child::before,
-.vtree li:last-child::after { display: none; }
-/* اگه فرزند یکیه خطوط افقی لازم نیست */
-.vtree li:only-child::before,
-.vtree li:only-child::after { display: none; }
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li::before { right: 50%; }
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li::after  { left: 50%; }
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li:first-child::before,
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li:last-child::after { display: none; }
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li:only-child::before,
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li:only-child::after { display: none; }
 
 /* ─── Nodes ─── */
 .vtree-node {
@@ -1494,4 +1497,40 @@ document.addEventListener('submit', async function (e) {
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
 
     try {
-        const res = await fetch
+        const res = await fetch(form.action, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(form),
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            treeToast('✅ ' + (data.message || 'انجام شد'));
+            if (isRootForm) form.reset();
+            await refreshTree();
+        } else {
+            const errs = data.errors ? Object.values(data.errors).flat().join(' | ') : (data.message || 'خطا');
+            treeToast('❌ ' + errs, false);
+            if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        }
+    } catch {
+        treeToast('❌ خطا در ارتباط با سرور', false);
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+});
+
+// اطمینان از اینکه popover مستقیم در body باشه (برای fixed positioning و view:cache)
+(function () {
+    const pop = document.getElementById('vtree-popover');
+    if (pop && pop.parentNode !== document.body) {
+        document.body.appendChild(pop);
+    }
+})();
+
+// auto-fit zoom هنگام load اولیه
+(function () {
+    // کمی تأخیر تا tree کاملاً render شده باشد
+    setTimeout(vtreeZoomFit, 150);
+})();
+</script>
+@endpush
