@@ -29,7 +29,7 @@ class ReportController extends Controller
         if ($request->filled('department_id'))     $query->where('department_id', $request->department_id);
         if ($request->filled('category_id'))       $query->where('category_id', $request->category_id);
 
-        // فیلترهای چندگانه بر اساس فیلدهای گزارش
+        // فیلترهای چندگانه بر اساس فیلدهای گزارش (MySQL JSON_TABLE)
         foreach ((array) $request->input('ff', []) as $filter) {
             if (empty($filter['fid']) || !isset($filter['val']) || $filter['val'] === '') continue;
             $fid = (int) $filter['fid'];
@@ -40,23 +40,29 @@ class ReportController extends Controller
                 if ($op === 'exact') {
                     // فیلد گزینه‌ای — تطابق دقیق
                     $q->whereRaw("EXISTS (
-                        SELECT 1 FROM json_each(data)
-                        WHERE json_extract(json_each.value, '$.field_id') = ?
-                          AND json_extract(json_each.value, '$.value') = ?
+                        SELECT 1 FROM JSON_TABLE(data, '$[*]' COLUMNS(
+                            fid INT PATH '$.field_id',
+                            val VARCHAR(500) PATH '$.value'
+                        )) AS jt
+                        WHERE jt.fid = ? AND jt.val = ?
                     )", [$fid, $val]);
                 } elseif ($op === 'has_photo') {
                     // فیلد عکس — وجود مقدار
                     $q->whereRaw("EXISTS (
-                        SELECT 1 FROM json_each(data)
-                        WHERE json_extract(json_each.value, '$.field_id') = ?
-                          AND json_extract(json_each.value, '$.value') != ''
+                        SELECT 1 FROM JSON_TABLE(data, '$[*]' COLUMNS(
+                            fid INT PATH '$.field_id',
+                            val VARCHAR(500) PATH '$.value'
+                        )) AS jt
+                        WHERE jt.fid = ? AND jt.val IS NOT NULL AND jt.val != ''
                     )", [$fid]);
                 } else {
                     // فیلد متنی/لینک — جستجوی حاوی
                     $q->whereRaw("EXISTS (
-                        SELECT 1 FROM json_each(data)
-                        WHERE json_extract(json_each.value, '$.field_id') = ?
-                          AND json_extract(json_each.value, '$.value') LIKE ?
+                        SELECT 1 FROM JSON_TABLE(data, '$[*]' COLUMNS(
+                            fid INT PATH '$.field_id',
+                            val VARCHAR(1000) PATH '$.value'
+                        )) AS jt
+                        WHERE jt.fid = ? AND jt.val LIKE ?
                     )", [$fid, '%' . $val . '%']);
                 }
             });
