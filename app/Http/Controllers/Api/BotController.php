@@ -359,7 +359,7 @@ class BotController extends Controller
     private function askOptionField(string $chatId, BotState $state, CategoryField $field): void
     {
         $options = $field->options;
-        if ($options->isEmpty()) { $this->popField($state); $this->askNextField($chatId, $state); return; }
+        if ($options->isEmpty()) { $this->popField($state); $this->prependAlwaysChildFields($state, $field); $this->askNextField($chatId, $state); return; }
 
         $prompt = "لطفاً یکی را انتخاب کنید:\n\n🔹 *{$field->label}*";
         if ($field->description) $prompt .= "\n📝 _{$field->description}_";
