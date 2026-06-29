@@ -125,6 +125,9 @@ class BotController extends Controller
         } elseif (str_starts_with($data, 'opt_') && in_array($state->step, ['answering_field', 'editing_field'])) {
             $this->handleOptionSelected($chatId, $state, (int) str_replace('opt_', '', $data));
 
+        } elseif (str_starts_with($data, 'branch_') && in_array($state->step, ['answering_field', 'editing_field'])) {
+            $this->handleBranchSelected($chatId, $state, (int) str_replace('branch_', '', $data));
+
         } elseif ($data === 'field_multiple_done' && $state->step === 'answering_field') {
             $this->handleMultipleDone($chatId, $state, false);
 
@@ -380,27 +383,43 @@ class BotController extends Controller
         $draft[] = ['field_id' => $option->field->id, 'label' => $option->field->label, 'type' => 'option', 'value' => $option->label, 'option_id' => $option->id];
 
         $this->popField($state);
-
-        // ─── DEBUG LOG ───────────────────────────────────────────────
-        $optionChildIds  = $option->childFields()->orderBy('sort_order')->pluck('id')->toArray();
-        $alwaysChildIds  = $option->field->alwaysChildFields()->pluck('id')->toArray();
-        Log::info('[BOT_OPTION] chat=' . $chatId
-            . ' | option_id=' . $option->id
-            . ' | option_label=' . $option->label
-            . ' | parent_field_id=' . $option->field->id
-            . ' | parent_field_label=' . $option->field->label
-            . ' | option_childFields=' . json_encode($optionChildIds)
-            . ' | always_childFields=' . json_encode($alwaysChildIds)
-            . ' | queue_before=' . json_encode($state->field_queue ?? [])
-        );
-        // ─────────────────────────────────────────────────────────────
-
         $this->prependAlwaysChildFields($state, $option->field);
+
+        // اگر همه فرزندان از نوع option باشند و بیش از یکی باشند،
+        // به‌جای افزودن همه به صف، یک منوی انتخاب شاخه نشان می‌دهیم
+        $childFields = $option->childFields()->orderBy('sort_order')->get();
+
+        if ($childFields->count() > 1 && $childFields->every(fn($f) => $f->type === 'option')) {
+            $state->update(['draft_data' => $draft]);
+            $this->deleteTrackedMessage($chatId, $state);
+            $this->askBranchSelection($chatId, $state, $childFields, $option->label);
+            return;
+        }
+
+        // حالت عادی: تمام فرزندان را به ترتیب به صف اضافه می‌کنیم
         $this->prependOptionFields($state, $option);
         $state->update(['draft_data' => $draft]);
 
-        Log::info('[BOT_OPTION] queue_after=' . json_encode($state->field_queue ?? []));
+        $this->deleteTrackedMessage($chatId, $state);
+        $this->askNextField($chatId, $state);
+    }
 
+    /** منوی انتخاب شاخه: وقتی چند فیلد option فرزند داریم، کاربر فقط یکی را انتخاب می‌کند */
+    private function askBranchSelection(string $chatId, BotState $state, $childFields, string $parentLabel): void
+    {
+        $prompt = "لطفاً یکی را انتخاب کنید:\n\n🔹 *{$parentLabel}*";
+        $inlineKeyboard   = $childFields->map(fn($f) => [['text' => $f->label, 'callback_data' => "branch_{$f->id}"]])->toArray();
+        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
+        $msgId = $this->sendMessage($chatId, $prompt, ['inline_keyboard' => $inlineKeyboard]);
+        $state->update(['last_message_id' => $msgId]);
+    }
+
+    /** وقتی کاربر یک شاخه را انتخاب کرد، فقط همان فیلد به ابتدای صف اضافه می‌شود */
+    private function handleBranchSelected(string $chatId, BotState $state, int $fieldId): void
+    {
+        $queue = $state->field_queue ?? [];
+        array_unshift($queue, $fieldId);
+        $state->update(['field_queue' => $queue]);
         $this->deleteTrackedMessage($chatId, $state);
         $this->askNextField($chatId, $state);
     }
