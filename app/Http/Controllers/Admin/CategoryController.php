@@ -308,7 +308,7 @@ class CategoryController extends Controller
             'category_id'      => $f->category_id,
             'parent_option_id' => $parentOptId,
             'parent_field_id'  => $parentFieldId,
-            'label'            => $f->label . ' (کپی)',
+            'label'            => $f->label,
             'description'      => $f->description,
             'type'             => $f->type,
             'is_required'      => $f->is_required,
