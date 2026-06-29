@@ -414,12 +414,19 @@ class BotController extends Controller
         $state->update(['last_message_id' => $msgId]);
     }
 
-    /** وقتی کاربر یک شاخه را انتخاب کرد، فقط همان فیلد به ابتدای صف اضافه می‌شود */
+    /** وقتی کاربر یک شاخه را انتخاب کرد، انتخاب را ثبت کرده و فقط همان فیلد را به صف اضافه می‌کند */
     private function handleBranchSelected(string $chatId, BotState $state, int $fieldId): void
     {
+        $field = CategoryField::find($fieldId);
+        if (!$field) return;
+
+        // ثبت انتخاب شاخه در draft_data
+        $draft   = $state->draft_data ?? [];
+        $draft[] = ['field_id' => $field->id, 'label' => $field->label, 'type' => 'branch', 'value' => $field->label];
+
         $queue = $state->field_queue ?? [];
         array_unshift($queue, $fieldId);
-        $state->update(['field_queue' => $queue]);
+        $state->update(['draft_data' => $draft, 'field_queue' => $queue]);
         $this->deleteTrackedMessage($chatId, $state);
         $this->askNextField($chatId, $state);
     }
@@ -584,7 +591,11 @@ class BotController extends Controller
 
         $msg = "📄 *پیش‌نمایش گزارش شما*\nماه: $formattedMonth\nدسته: {$category->name}\n\n";
         foreach ($draft as $item) {
-            $val     = $item['value'];
+            $val = $item['value'];
+            if ($item['type'] === 'branch') {
+                $msg .= "🔀 *مسیر انتخاب‌شده:* {$val}\n\n";
+                continue;
+            }
             $display = is_array($val)
                 ? ($item['type'] === 'photo' ? count($val) . ' عکس آپلود شد' : '• ' . implode("\n• ", $val))
                 : ($item['type'] === 'photo' ? '[عکس آپلود شد]' : $val);
@@ -603,7 +614,8 @@ class BotController extends Controller
     private function showEditOptions(string $chatId, BotState $state): void
     {
         $draft          = $state->draft_data ?? [];
-        $inlineKeyboard = array_map(fn($item) => [['text' => 'ویرایش: ' . $item['label'], 'callback_data' => "edit_field_{$item['field_id']}"]], $draft);
+        $editableItems  = array_filter($draft, fn($item) => ($item['type'] ?? '') !== 'branch');
+        $inlineKeyboard = array_map(fn($item) => [['text' => 'ویرایش: ' . $item['label'], 'callback_data' => "edit_field_{$item['field_id']}"]], $editableItems);
         $msgId = $this->sendMessage($chatId, "کدام بخش را می‌خواهید ویرایش کنید؟", ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
