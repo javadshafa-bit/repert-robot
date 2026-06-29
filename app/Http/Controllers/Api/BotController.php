@@ -614,7 +614,7 @@ class BotController extends Controller
     private function showEditOptions(string $chatId, BotState $state): void
     {
         $draft          = $state->draft_data ?? [];
-        $editableItems  = array_filter($draft, fn($item) => ($item['type'] ?? '') !== 'branch');
+        $editableItems  = array_values(array_filter($draft, fn($item) => ($item['type'] ?? '') !== 'branch'));
         $inlineKeyboard = array_map(fn($item) => [['text' => 'ویرایش: ' . $item['label'], 'callback_data' => "edit_field_{$item['field_id']}"]], $editableItems);
         $msgId = $this->sendMessage($chatId, "کدام بخش را می‌خواهید ویرایش کنید؟", ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
@@ -627,7 +627,7 @@ class BotController extends Controller
             'representative_id' => $state->representative_id,
             'department_id'     => $state->department_id,
             'category_id'       => $state->category_id,
-            'jalali_month'      => $state->jalali_month,
+            'jalali_month'      => $state->jalali_month ?? \Morilog\Jalali\Jalalian::now()->format('Y-m'),
             'data'              => $state->draft_data,
         ]);
         $state->update(['step' => 'idle', 'draft_data' => [], 'field_queue' => []]);
