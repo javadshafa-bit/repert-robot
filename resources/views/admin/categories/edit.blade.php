@@ -351,7 +351,7 @@
 
 .vtree, .vtree ul {
     list-style: none; margin: 0; padding: 0;
-    display: flex; justify-content: center;
+    display: flex; justify-content: center; align-items: flex-start;
 }
 /* ul.vtree باید به اندازه محتوا باشد (نه 100% والد)
    تا scrollbar بتواند به هر دو طرف بپیماید */
@@ -359,21 +359,26 @@ ul.vtree {
     width: max-content;
     min-width: 100%;
 }
+/* فاصله بین کارت والد و خط افقی فرزندان */
 .vtree ul {
-    padding-top: 32px;
+    padding-top: 36px;
     position: relative;
 }
-/* خط عمودی از والد به سطر فرزندان */
+/* خط عمودی از والد به سطر افقی فرزندان — centered دقیق */
 .vtree ul::before {
     content: '';
     position: absolute; top: 0; left: 50%;
-    height: 32px; border-left: 2px solid #d1d5db;
+    transform: translateX(-1px);
+    width: 2px; height: 36px; background: #d1d5db;
 }
+/* فضای بین خط افقی و بالای کارت */
 .vtree li {
     display: flex; flex-direction: column; align-items: center;
-    padding: 0 14px; position: relative;
+    padding: 0 12px;
+    padding-top: 16px;
+    position: relative;
 }
-/* خطوط افقی بین برادرها */
+/* خطوط افقی بین برادرها — در فاصله padding-top */
 .vtree li::before, .vtree li::after {
     content: ''; position: absolute; top: 0;
     border-top: 2px solid #d1d5db; width: 50%;
@@ -390,16 +395,28 @@ ul.vtree {
 .vtree-node {
     position: relative; z-index: 1;
     border: 1.5px solid; border-radius: 10px;
-    text-align: center; max-width: 150px; min-width: 80px;
+    text-align: center;
+    width: 140px;           /* عرض ثابت → همتراز شدن خطوط */
+    box-sizing: border-box;
     box-shadow: 0 2px 6px rgba(0,0,0,.09);
-    padding: 7px 14px; cursor: default;
+    padding: 7px 10px; cursor: default;
     transition: box-shadow .15s, transform .15s;
 }
 .vtree-node:hover { box-shadow: 0 4px 12px rgba(99,102,241,.25); transform: translateY(-1px); }
+/* خط عمودی کوتاه از خط افقی به بالای هر کارت فرزند (stub)
+   فقط برای uls عادی (نه vtree-always-ul و نه ریشه) */
+.vtree ul:not(.vtree):not(.vtree-always-ul) > li > .vtree-node::before {
+    content: '';
+    position: absolute; top: -17px; left: 50%;
+    transform: translateX(-1px);
+    width: 2px; height: 17px; background: #d1d5db;
+}
 .vtree-option-node {
     border-radius: 99px !important;
-    padding: 4px 16px !important;
+    padding: 5px 12px !important;
     background: #fff7ed; border-color: #fb923c; color: #9a3412;
+    width: 120px !important;
+    box-sizing: border-box !important;
 }
 .vtree-badge  { display: block; font-size: 9px; opacity: .6; margin-bottom: 1px; }
 .vtree-label  { display: block; font-size: 11px; font-weight: 600;
@@ -1477,40 +1494,4 @@ document.addEventListener('submit', async function (e) {
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
 
     try {
-        const res = await fetch(form.action, {
-            method: 'POST',
-            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-            body: new FormData(form),
-        });
-        const data = await res.json();
-
-        if (res.ok && data.success) {
-            treeToast('✅ ' + (data.message || 'انجام شد'));
-            if (isRootForm) form.reset();
-            await refreshTree();
-        } else {
-            const errs = data.errors ? Object.values(data.errors).flat().join(' | ') : (data.message || 'خطا');
-            treeToast('❌ ' + errs, false);
-            if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
-        }
-    } catch {
-        treeToast('❌ خطا در ارتباط با سرور', false);
-        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
-    }
-});
-
-// اطمینان از اینکه popover مستقیم در body باشه (برای fixed positioning و view:cache)
-(function () {
-    const pop = document.getElementById('vtree-popover');
-    if (pop && pop.parentNode !== document.body) {
-        document.body.appendChild(pop);
-    }
-})();
-
-// auto-fit zoom هنگام load اولیه
-(function () {
-    // کمی تأخیر تا tree کاملاً render شده باشد
-    setTimeout(vtreeZoomFit, 150);
-})();
-</script>
-@endpush
+        const res = await fetch
