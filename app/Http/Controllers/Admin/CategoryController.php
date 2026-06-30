@@ -94,6 +94,13 @@ class CategoryController extends Controller
         return back()->with('success', 'دسته‌بندی حذف شد.');
     }
 
+    public function toggleActive(Category $category)
+    {
+        $category->update(['is_active' => !$category->is_active]);
+        $status = $category->is_active ? 'فعال' : 'غیرفعال';
+        return back()->with('success', "دسته‌بندی «{$category->name}» {$status} شد.");
+    }
+
     // ==========================================
     // Fields
     // ==========================================

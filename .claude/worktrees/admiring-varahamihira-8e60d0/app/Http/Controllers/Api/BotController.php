@@ -106,12 +106,12 @@ class BotController extends Controller
         if (!$state || !$state->representative_id) return;
 
         // انتخاب ماه
-        if (str_starts_with($data, 'month_')) {
+        if (str_starts_with($data, 'month_') && $state->step === 'selecting_month') {
             $month = str_replace('month_', '', $data);
             $state->update(['jalali_month' => $month, 'step' => 'selecting_department']);
             $this->askDepartment($chatId);
         } // انتخاب دپارتمان
-        elseif (str_starts_with($data, 'department_')) {
+        elseif (str_starts_with($data, 'department_') && $state->step === 'selecting_department') {
             $departmentId = str_replace('department_', '', $data);
             $state->update([
                 'department_id' => $departmentId,
@@ -119,7 +119,7 @@ class BotController extends Controller
             ]);
             $this->askCategory($chatId);
         } // انتخاب دسته‌بندی
-        elseif (str_starts_with($data, 'category_')) {
+        elseif (str_starts_with($data, 'category_') && $state->step === 'selecting_category') {
             $categoryId = str_replace('category_', '', $data);
             $state->update([
                 'category_id' => $categoryId,
@@ -129,13 +129,13 @@ class BotController extends Controller
             ]);
             $this->askNextField($chatId, $state);
         } // تایید نهایی پیش‌نمایش
-        elseif ($data === 'confirm_report') {
+        elseif ($data === 'confirm_report' && $state->step === 'preview') {
             $this->saveFinalReport($chatId, $state);
         } // درخواست ویرایش (نمایش لیست فیلدها)
-        elseif ($data === 'request_edit') {
+        elseif ($data === 'request_edit' && $state->step === 'preview') {
             $this->showEditOptions($chatId, $state);
         } // انتخاب فیلد برای ویرایش
-        elseif (str_starts_with($data, 'edit_field_')) {
+        elseif (str_starts_with($data, 'edit_field_') && $state->step === 'preview') {
             $fieldIndex = str_replace('edit_field_', '', $data);
             $state->update(['step' => 'editing_field', 'current_field_index' => $fieldIndex]);
 

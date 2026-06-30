@@ -29,11 +29,20 @@
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{ $category->fields_count }} فیلد</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{ $category->sort_order }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                        @if($category->is_active)
-                            <span class="text-green-600">فعال</span>
-                        @else
-                            <span class="text-red-600">غیرفعال</span>
-                        @endif
+                        <form action="{{ route('admin.categories.toggle-active', $category) }}" method="POST" class="inline-block">
+                            @csrf
+                            @method('PATCH')
+                            <button type="submit"
+                                class="inline-flex items-center gap-x-1 text-sm font-semibold rounded-lg border border-transparent {{ $category->is_active ? 'text-green-600 hover:text-green-800' : 'text-red-500 hover:text-red-700' }}">
+                                @if($category->is_active)
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    فعال
+                                @else
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    غیرفعال
+                                @endif
+                            </button>
+                        </form>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
                         <a href="{{ route('admin.categories.edit', $category) }}" class="inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent text-blue-600 hover:text-blue-800">مدیریت فیلدها / ویرایش</a>
