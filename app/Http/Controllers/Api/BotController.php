@@ -439,7 +439,8 @@ class BotController extends Controller
         if ($field->type === 'photo') { $this->sendMessage($chatId, "⚠️ برای این فیلد باید عکس ارسال کنید."); return; }
 
         if ($field->type === 'link') {
-            if (!preg_match('/^(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)$/i', $text)) {
+            // مسیر URL می‌تواند شامل حروف فارسی یا کاراکترهای percent-encoded باشد (\S = هر کاراکتر غیر فاصله)
+            if (!preg_match('/^(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z]{2,10}(?::\d+)?(?:[\/?#]\S*)?$/iu', trim($text))) {
                 $this->sendMessage($chatId, "⚠️ لینک معتبر نیست.\nمثال: `https://example.com`");
                 return;
             }
