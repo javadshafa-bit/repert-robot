@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\BroadcastController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ExportController;
@@ -61,6 +62,15 @@ Route::middleware('admin.auth')->prefix('admin')->name('admin.')->group(function
     // دپارتمان‌ها
     Route::middleware('admin.can:departments')->group(function () {
         Route::resource('departments', DepartmentController::class);
+    });
+
+    // پیام همگانی
+    Route::middleware('admin.can:broadcasts')->group(function () {
+        Route::get('/broadcasts',                      [BroadcastController::class, 'index'])->name('broadcasts.index');
+        Route::get('/broadcasts/create',               [BroadcastController::class, 'create'])->name('broadcasts.create');
+        Route::post('/broadcasts',                     [BroadcastController::class, 'store'])->name('broadcasts.store');
+        Route::patch('/broadcasts/{broadcast}/toggle', [BroadcastController::class, 'toggle'])->name('broadcasts.toggle');
+        Route::delete('/broadcasts/{broadcast}',       [BroadcastController::class, 'destroy'])->name('broadcasts.destroy');
     });
 
     // گزارش‌ها

@@ -31,6 +31,7 @@ class Role extends Model
             'categories'      => 'فرم‌ساز و دسته‌بندی',
             'departments'     => 'دپارتمان‌ها',
             'representatives' => 'استان‌ها و نمایندگان',
+            'broadcasts'      => 'ارسال پیام همگانی',
             'settings'        => 'تنظیمات ربات',
             'users'           => 'مدیریت کاربران و نقش‌ها',
         ];

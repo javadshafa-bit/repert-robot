@@ -218,6 +218,19 @@
                 </div>
                 @endif
 
+                <!-- ارتباطات -->
+                @if($u->hasPermission('broadcasts'))
+                <div class="pt-3 mt-3 flex flex-col border-t border-sidebar-2-divider">
+                    <span class="block pe-2.5 mb-2 font-medium text-xs uppercase text-muted-foreground-1">ارتباطات</span>
+                    <ul class="flex flex-col gap-y-1">
+                        <li>
+                            <a class="w-full flex items-center gap-x-2 py-2 px-2.5 text-sm text-sidebar-2-nav-foreground rounded-lg hover:bg-sidebar-2-nav-hover focus:outline-hidden {{ request()->routeIs('admin.broadcasts.*') ? 'bg-sidebar-2-nav-active font-bold' : '' }}"
+                               href="{{ route('admin.broadcasts.index') }}">پیام همگانی</a>
+                        </li>
+                    </ul>
+                </div>
+                @endif
+
                 <!-- مدیریت کاربران -->
                 @if($u->hasPermission('users'))
                 <div class="pt-3 mt-3 flex flex-col border-t border-sidebar-2-divider">
