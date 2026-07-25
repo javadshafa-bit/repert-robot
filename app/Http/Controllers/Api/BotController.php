@@ -12,6 +12,7 @@ use App\Models\Report;
 use App\Models\Representative;
 use App\Models\Setting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -33,9 +34,14 @@ class BotController extends Controller
         $update = $request->all();
         Log::info(json_encode($update, JSON_UNESCAPED_UNICODE));
 
-        if (isset($update['message']))               $this->processMessage($update['message']);
-        elseif (isset($update['edited_message']))     $this->processEditedMessage($update['edited_message']);
-        elseif (isset($update['callback_query']))     $this->processCallback($update['callback_query']);
+        // همه‌ی پردازش این آپدیت داخل یک تراکنش با قفل روی ردیف BotState انجام می‌شود
+        // تا اگر بله همین آپدیت را دوباره بفرستد یا کاربر دوبار پشت‌سرهم روی دکمه‌ای بزند،
+        // دو پردازش هم‌زمان state یکدیگر را خراب نکنند (علت باگ‌های قبلیِ قاطی‌شدن صف فیلدها).
+        DB::transaction(function () use ($update) {
+            if (isset($update['message']))               $this->processMessage($update['message']);
+            elseif (isset($update['edited_message']))     $this->processEditedMessage($update['edited_message']);
+            elseif (isset($update['callback_query']))     $this->processCallback($update['callback_query']);
+        });
 
         return response('OK', 200);
     }
@@ -47,7 +53,8 @@ class BotController extends Controller
         $photo    = $message['photo'] ?? null;
         $document = $message['document'] ?? null;
 
-        $state = BotState::firstOrCreate(['chat_id' => $chatId]);
+        BotState::firstOrCreate(['chat_id' => $chatId]);
+        $state = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
 
         if ($text === '/start') return $this->handleStart($chatId, $state);
         if (isset($message['contact'])) return $this->handleContact($chatId, $message['contact']['phone_number'], $state);
@@ -67,7 +74,7 @@ class BotController extends Controller
         $chatId = $message['chat']['id'];
         $text   = $message['text'] ?? null;
         $photo  = $message['photo'] ?? null;
-        $state  = BotState::where('chat_id', $chatId)->first();
+        $state  = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
 
         if (!$state || !$state->representative_id) return;
 
@@ -99,7 +106,7 @@ class BotController extends Controller
     {
         $chatId = $callbackQuery['message']['chat']['id'];
         $data   = $callbackQuery['data'];
-        $state  = BotState::where('chat_id', $chatId)->first();
+        $state  = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
         if (!$state || !$state->representative_id) return;
 
         if ($data === 'main_start_report') {
