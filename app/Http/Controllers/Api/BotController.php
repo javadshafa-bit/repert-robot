@@ -425,7 +425,7 @@ class BotController extends Controller
     private function handleBranchSelected(string $chatId, BotState $state, int $fieldId): void
     {
         $field = CategoryField::find($fieldId);
-        if (!$field) return;
+        if (!$field) { $this->sendMessage($chatId, "⚠️ این گزینه دیگر معتبر نیست، ادامه می‌دهیم."); $this->askNextField($chatId, $state); return; }
 
         // ثبت انتخاب شاخه در draft_data
         $draft   = $state->draft_data ?? [];
@@ -441,7 +441,7 @@ class BotController extends Controller
     private function saveAnswerAndContinue(string $chatId, string $text, BotState $state): void
     {
         $field = $this->currentField($state);
-        if (!$field) return;
+        if (!$field) { $this->askNextField($chatId, $state); return; }
 
         if ($field->type === 'photo') { $this->sendMessage($chatId, "⚠️ برای این فیلد باید عکس ارسال کنید."); return; }
 
@@ -469,7 +469,7 @@ class BotController extends Controller
     private function handleFileUpload(string $chatId, $photo, $document, BotState $state, bool $isEditing = false): void
     {
         $field = $this->currentField($state);
-        if (!$field) return;
+        if (!$field) { $this->askNextField($chatId, $state); return; }
 
         if (in_array($field->type, ['text', 'link'])) { $this->sendMessage($chatId, "⚠️ این فیلد نیاز به پاسخ متنی دارد."); return; }
 
@@ -526,7 +526,12 @@ class BotController extends Controller
     private function handleMultipleDone(string $chatId, BotState $state, bool $isEditing): void
     {
         $field = $this->currentField($state);
-        if (!$field) return;
+        if (!$field) {
+            $this->deleteTrackedMessage($chatId, $state);
+            if ($isEditing) { $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); }
+            else { $this->askNextField($chatId, $state); }
+            return;
+        }
 
         $draft = $state->draft_data ?? [];
         $found = false;
@@ -542,7 +547,7 @@ class BotController extends Controller
     private function saveEditedAnswer(string $chatId, string $text, BotState $state): void
     {
         $field = $this->currentField($state);
-        if (!$field) return;
+        if (!$field) { $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); return; }
         if ($field->type === 'photo') { $this->sendMessage($chatId, "⚠️ برای ویرایش این فیلد باید عکس ارسال کنید."); return; }
 
         $draft = $state->draft_data ?? [];
@@ -571,7 +576,7 @@ class BotController extends Controller
     private function startEditField(string $chatId, BotState $state, int $fieldId): void
     {
         $field = CategoryField::find($fieldId);
-        if (!$field) return;
+        if (!$field) { $this->sendMessage($chatId, "⚠️ این فیلد دیگر معتبر نیست."); $this->showPreview($chatId, $state); return; }
 
         if ($field->is_multiple) {
             $draft = $state->draft_data ?? [];
