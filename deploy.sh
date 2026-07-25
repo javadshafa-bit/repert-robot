@@ -36,16 +36,17 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-# ۷. پاک کردن bot_states های نیمه‌کاره (چون فرمت draft_data عوض شده)
-echo "🤖 clearing in-progress bot states..."
-php artisan tinker --execute="
-\App\Models\BotState::where('step', '!=', 'idle')->update([
-    'step'        => 'idle',
-    'draft_data'  => null,
-    'field_queue' => null,
-]);
-echo 'Bot states cleared.';
-"
+# ۷. (حذف شد) قبلاً اینجا همه‌ی bot_states نیمه‌کاره پاک می‌شد — روی هر دیپلوی، بدون
+# شرط، حتی وقتی فرمت داده تغییری نکرده بود. این باعث می‌شد کاربرانی که وسط پرکردن
+# گزارش بودن، گزارششون به‌طور کامل از دست بره (بدون هیچ خطایی به خودشون).
+# اگر واقعاً فرمت draft_data/field_queue تغییر کرد، این دستور رو دستی و آگاهانه
+# (و بعد از اطلاع‌رسانی به نمایندگان) اجرا کن، نه به‌صورت خودکار در هر push:
+#
+#   php artisan tinker --execute="
+#   \App\Models\BotState::where('step', '!=', 'idle')->update([
+#       'step' => 'idle', 'draft_data' => null, 'field_queue' => null,
+#   ]);
+#   "
 
 # ۸. symlink storage
 php artisan storage:link --force 2>/dev/null || true
