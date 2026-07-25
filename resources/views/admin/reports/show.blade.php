@@ -19,7 +19,7 @@
                     @if($report->department)
                     <li><span class="text-gray-500 block">دپارتمان:</span> <span class="font-semibold">{{ $report->department->name }}</span></li>
                     @endif
-                    <li><span class="text-gray-500 block">تاریخ ثبت سیستم:</span> <span class="font-semibold" dir="ltr">{{ \Morilog\Jalali\Jalalian::fromCarbon($report->created_at)->format('Y/m/d H:i') }}</span></li>
+                    <li><span class="text-gray-500 block">تاریخ ثبت سیستم:</span> <span class="font-semibold" dir="ltr">{{ \Morilog\Jalali\Jalalian::fromCarbon($report->created_at->copy()->setTimezone('Asia/Tehran'))->format('Y/m/d H:i') }}</span></li>
                 </ul>
             </div>
         </div>

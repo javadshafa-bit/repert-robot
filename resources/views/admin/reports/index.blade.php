@@ -130,7 +130,7 @@
                     @if(count($data) > 3) <span class="text-gray-400">...</span> @endif
                 </td>
                 <td class="px-5 py-4 whitespace-nowrap text-xs text-gray-400" dir="ltr">
-                    {{ \Morilog\Jalali\Jalalian::fromCarbon($report->created_at)->format('Y/m/d H:i') }}
+                    {{ \Morilog\Jalali\Jalalian::fromCarbon($report->created_at->copy()->setTimezone('Asia/Tehran'))->format('Y/m/d H:i') }}
                 </td>
                 <td class="px-5 py-4 whitespace-nowrap text-end text-sm">
                     <div class="inline-flex items-center gap-x-2">
