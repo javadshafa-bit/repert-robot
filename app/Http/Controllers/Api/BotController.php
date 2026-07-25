@@ -258,7 +258,7 @@ class BotController extends Controller
     private function prependOptionFields(BotState $state, FieldOption $option): void
     {
         $childIds = $option->childFields()->orderBy('sort_order')->pluck('id')->toArray();
-        $state->update(['field_queue' => array_merge($childIds, $state->field_queue ?? [])]);
+        $state->update(['field_queue' => array_values(array_unique(array_merge($childIds, $state->field_queue ?? [])))]);
     }
 
     /** زیرفیلدهای همیشگی فیلد والد را به ابتدای صف اضافه می‌کند (بدون شرط) */
@@ -266,7 +266,7 @@ class BotController extends Controller
     {
         $childIds = $field->alwaysChildFields()->pluck('id')->toArray();
         if (!empty($childIds)) {
-            $state->update(['field_queue' => array_merge($childIds, $state->field_queue ?? [])]);
+            $state->update(['field_queue' => array_values(array_unique(array_merge($childIds, $state->field_queue ?? [])))]);
         }
     }
 
@@ -426,7 +426,7 @@ class BotController extends Controller
 
         $queue = $state->field_queue ?? [];
         array_unshift($queue, $fieldId);
-        $state->update(['draft_data' => $draft, 'field_queue' => $queue]);
+        $state->update(['draft_data' => $draft, 'field_queue' => array_values(array_unique($queue))]);
         $this->deleteTrackedMessage($chatId, $state);
         $this->askNextField($chatId, $state);
     }
