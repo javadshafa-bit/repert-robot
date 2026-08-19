@@ -1,0 +1,40 @@
+# استک Traefik — reverse proxy مشترک برای همه سایت‌های این سرور
+#
+# در فاز تست: HTTP_PORT=8080 و HTTPS_PORT=8443 (تداخلی با nginx فعلی ندارد)
+# در گام ۵ (سوییچ نهایی): در فایل .env مقادیر را به 80 و 443 تغییر دهید
+#
+#   docker compose up -d
+#   docker compose logs -f traefik
+
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: traefik
+    restart: always
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+      - "${HTTPS_PORT:-8443}:443"
+    volumes:
+      # فقط خواندنی — Traefik کانتینرها را کشف می‌کند
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+      # گواهی‌های certbot موجود روی هاست
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./logs:/var/log/traefik
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      # داشبورد Traefik روی یک ساب‌دامنه، پشت Basic Auth
+      # برای ساخت رمز:  htpasswd -nb admin 'YOUR_PASSWORD'
+      # سپس نتیجه را در .env داخل TRAEFIK_DASHBOARD_AUTH بگذارید (هر $ را $$ کنید)
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.a1-studio.ir`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+
+networks:
+  web:
+    external: true

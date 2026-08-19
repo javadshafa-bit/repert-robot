@@ -11,6 +11,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // پشت reverse proxy (Traefik → nginx) اجرا می‌شود؛ بدون این،
+        // Laravel آدرس‌ها را http می‌سازد و IP واقعی کاربر را نمی‌بیند.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'admin.auth' => \App\Http\Middleware\AdminAuth::class,
             'admin.can'  => \App\Http\Middleware\CheckPermission::class,

@@ -1,0 +1,30 @@
+# گواهی‌های SSL — از certbot موجود روی هاست (mount شده read-only)
+# با اضافه شدن دامنه جدید، فقط یک بلاک به این فایل اضافه کنید؛
+# Traefik فایل را watch می‌کند و بدون ری‌استارت اعمال می‌شود.
+
+tls:
+  certificates:
+    - certFile: /etc/letsencrypt/live/pakhshemoon.ir/fullchain.pem
+      keyFile:  /etc/letsencrypt/live/pakhshemoon.ir/privkey.pem
+
+    - certFile: /etc/letsencrypt/live/tehran.pakhshemoon.ir/fullchain.pem
+      keyFile:  /etc/letsencrypt/live/tehran.pakhshemoon.ir/privkey.pem
+
+    - certFile: /etc/letsencrypt/live/a1-studio.ir/fullchain.pem
+      keyFile:  /etc/letsencrypt/live/a1-studio.ir/privkey.pem
+
+  # اگر درخواستی با دامنه‌ی ناشناخته آمد، از این گواهی استفاده شود
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/letsencrypt/live/pakhshemoon.ir/fullchain.pem
+        keyFile:  /etc/letsencrypt/live/pakhshemoon.ir/privkey.pem
+
+  options:
+    default:
+      minVersion: VersionTLS12
+      cipherSuites:
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384

@@ -1,0 +1,30 @@
+# روتینگ a1-studio.ir → کانتینر repert-nginx
+# این فایل در ~/stacks/traefik/dynamic/ قرار می‌گیرد (Traefik آن را watch می‌کند)
+
+http:
+  routers:
+    repert:
+      rule: "Host(`a1-studio.ir`) || Host(`www.a1-studio.ir`)"
+      entryPoints: [websecure]
+      service: repert
+      middlewares: [repert-headers]
+      tls: {}
+
+  services:
+    repert:
+      loadBalancer:
+        servers:
+          - url: "http://repert-nginx:80"
+        passHostHeader: true
+
+  middlewares:
+    repert-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
