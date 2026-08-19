@@ -1,5 +1,10 @@
-# Traefik v3 — static configuration
-# گواهی‌ها از certbot موجود روی هاست خوانده می‌شوند (ACME داخلی Traefik خاموش است)
+# Traefik v3 — پیکربندی استاتیک (نسخه‌ی روی سرور: ~/stacks/traefik/traefik.yml)
+#
+# دو منبع گواهی:
+#   ۱. گواهی‌های موجود certbot روی هاست  → از طریق file provider در dynamic/tls.yml
+#   ۲. صدور خودکار Let's Encrypt (HTTP-01) → certResolver با نام "le"
+# دامنه‌های قدیمی از مسیر ۱ می‌آیند (چون گواهی‌شان از قبل هست و مطابقت پیدا می‌کند)
+# و هر دامنه‌ی جدیدی که در روتر خود `certResolver: le` بگذارد خودکار گواهی می‌گیرد.
 
 global:
   checkNewVersion: false
@@ -17,16 +22,14 @@ api:
 entryPoints:
   web:
     address: ":80"
-    # ریدایرکت خودکار HTTP → HTTPS
     http:
       redirections:
         entryPoint:
           to: websecure
           scheme: https
           permanent: true
-    # pakhshemoon.ir پشت Cloudflare است؛ IP واقعی کاربر از این هدرها خوانده شود
     forwardedHeaders:
-      trustedIPs:
+      trustedIPs: &cf
         - 173.245.48.0/20
         - 103.21.244.0/22
         - 103.22.200.0/22
@@ -48,30 +51,19 @@ entryPoints:
     http:
       tls: {}
     forwardedHeaders:
-      trustedIPs:
-        - 173.245.48.0/20
-        - 103.21.244.0/22
-        - 103.22.200.0/22
-        - 103.31.4.0/22
-        - 141.101.64.0/18
-        - 108.162.192.0/18
-        - 190.93.240.0/20
-        - 188.114.96.0/20
-        - 197.234.240.0/22
-        - 198.41.128.0/17
-        - 162.158.0.0/15
-        - 104.16.0.0/13
-        - 104.24.0.0/14
-        - 172.64.0.0/13
-        - 131.0.72.0/22
+      trustedIPs: *cf
+
+certificatesResolvers:
+  le:
+    acme:
+      email: javad.shafa@gmail.com
+      storage: /letsencrypt/acme.json
+      # چالش HTTP-01 روی همان entryPoint پورت ۸۰ انجام می‌شود.
+      # Traefik مسیر /.well-known/acme-challenge/ را قبل از ریدایرکت پاسخ می‌دهد.
+      httpChallenge:
+        entryPoint: web
 
 providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false      # فقط کانتینرهایی که لیبل traefik.enable=true دارند
-    network: web
-    watch: true
-
   file:
     directory: /etc/traefik/dynamic
     watch: true

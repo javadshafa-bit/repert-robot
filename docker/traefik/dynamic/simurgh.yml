@@ -1,0 +1,27 @@
+# روتینگ pakhshemoon.ir (و ساب‌دامنه‌های استانی) → کانتینر simurgh-prod-nginx
+#
+# مهم: به پورت 443 خود nginx وصل می‌شویم، نه 80.
+# چون بلاک :80 در کانفیگ nginx سایت simurgh یک ریدایرکت دائمی به https دارد؛
+# اگر Traefik به پورت 80 وصل شود حلقه‌ی بی‌نهایت ریدایرکت ایجاد می‌شود.
+# با این روش، کانفیگ nginx سایت simurgh اصلاً نیازی به تغییر ندارد.
+
+http:
+  routers:
+    simurgh:
+      rule: "Host(`pakhshemoon.ir`) || HostRegexp(`^[a-zA-Z0-9-]+\\.pakhshemoon\\.ir$`)"
+      entryPoints: [websecure]
+      service: simurgh
+      tls: {}
+
+  services:
+    simurgh:
+      loadBalancer:
+        servers:
+          - url: "https://simurgh-prod-nginx:443"
+        passHostHeader: true
+        serversTransport: skip-verify
+
+  serversTransports:
+    skip-verify:
+      # ارتباط داخل شبکه‌ی داکر است؛ نام گواهی با نام کانتینر مطابقت ندارد
+      insecureSkipVerify: true
