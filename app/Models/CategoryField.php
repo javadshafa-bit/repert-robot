@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class CategoryField extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'category_id',
         'parent_option_id',

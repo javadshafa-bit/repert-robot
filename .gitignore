@@ -2,6 +2,7 @@
 *.log
 .DS_Store
 .env
+.env.docker
 .env.backup
 .env.production
 .phpactor.json
@@ -28,3 +29,11 @@ Thumbs.db
 laravel810_marilyn
 database/database.sqlite
 *.zip
+
+# آرشیوهای موقتِ همگام‌سازی با محیط تست (قابل حذف)
+/src.tgz
+/vendor.tgz
+
+# بکاپ‌های محلی/سروری — نباید داخل git بروند
+/storage/backups
+/backups

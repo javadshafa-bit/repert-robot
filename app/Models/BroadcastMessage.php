@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use Carbon\Carbon;
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Morilog\Jalali\CalendarUtils;
 use Morilog\Jalali\Jalalian;
 
 class BroadcastMessage extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'title', 'body', 'photo_path', 'province_ids',
         'schedule_type', 'scheduled_at', 'send_time', 'day_of_week', 'jalali_day',

@@ -26,13 +26,42 @@
         <!-- اتصال ربات -->
         <div class="bg-white border rounded-xl shadow-sm p-6">
             <h3 class="text-lg font-semibold text-gray-800 mb-4">اتصال به بله (Webhook)</h3>
-            <form action="{{ route('admin.settings.connect') }}" method="POST">
-                @csrf
-                <p class="text-sm text-gray-600 mb-4">برای دریافت پیام‌ها از سمت بله، باید یک بار روی دکمه زیر کلیک کنید تا آدرس سیستم شما در بله ثبت شود.</p>
-                <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700">
-                    ارسال درخواست اتصال به بله
-                </button>
-            </form>
+            <p class="text-sm text-gray-600 mb-4">برای دریافت پیام‌ها از سمت بله، باید یک بار روی دکمه زیر کلیک کنید تا آدرس اختصاصی سازمان شما در بله ثبت شود.</p>
+
+            <div class="mb-4 text-sm space-y-1">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">سازمان</span>
+                    <span>{{ $tenant->name }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">ربات</span>
+                    <span dir="ltr">{{ $settings['bot_username'] ? '@' . $settings['bot_username'] : '—' }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-500 block mb-1">آدرس وبهوک اختصاصی شما</span>
+                    <input type="text" readonly dir="ltr" value="{{ $settings['webhook_url'] }}"
+                           class="py-2 px-3 block w-full border border-gray-200 rounded-lg text-xs bg-gray-50">
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <form action="{{ route('admin.settings.connect') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700">
+                        ارسال درخواست اتصال به بله
+                    </button>
+                </form>
+
+                @if($settings['bot_connected'] == '1' || $settings['bot_token'])
+                    <form action="{{ route('admin.settings.disconnect') }}" method="POST"
+                          onsubmit="return confirm('اتصال ربات قطع و توکن پاک می‌شود. مطمئن هستید؟')">
+                        @csrf
+                        <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50">
+                            قطع اتصال ربات
+                        </button>
+                    </form>
+                @endif
+            </div>
         </div>
 
         <!-- فرم تنظیمات -->

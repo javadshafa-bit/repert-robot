@@ -38,6 +38,31 @@ services:
       - repert_storage:/var/www/html/storage/app:ro
     networks: [internal, web]
 
+  # زمان‌بند لاراول — بدون این سرویس هیچ کار زمان‌بندی‌شده‌ای اجرا نمی‌شود:
+  #   broadcast:send-due    (پیام‌های همگانی)
+  #   subscriptions:expire  (انقضای اشتراک و برداشتن وبهوک ربات)
+  # از همان ایمیج app استفاده می‌کند و migrate اجرا نمی‌کند (entrypoint فقط برای php-fpm
+  # مرحله‌ی آماده‌سازی را اجرا می‌کند)، پس با app تداخل ندارد.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: repert-robot:latest
+    container_name: repert-scheduler
+    restart: always
+    env_file: .env.docker
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      app:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+    volumes:
+      - repert_storage:/var/www/html/storage/app
+      - repert_logs:/var/www/html/storage/logs
+    networks: [internal]
+
   mysql:
     image: mysql:8.4
     container_name: repert-mysql

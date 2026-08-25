@@ -7,6 +7,8 @@ use App\Models\BroadcastMessage;
 use App\Models\Province;
 use App\Models\Representative;
 use App\Services\BroadcastSender;
+use App\Support\TenantContext;
+use App\Support\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Morilog\Jalali\CalendarUtils;
@@ -37,7 +39,7 @@ class BroadcastController extends Controller
             'body'          => 'required|string|max:4000',
             'photo'         => 'nullable|image|max:5120',
             'province_ids'  => 'nullable|array',
-            'province_ids.*'=> 'exists:provinces,id',
+            'province_ids.*'=> [TenantRule::exists('provinces')],
             'schedule_type' => 'required|in:instant,once,weekly,monthly_jalali',
             // once
             'jalali_year'   => 'required_if:schedule_type,once|nullable|integer|min:1400|max:1500',
@@ -55,7 +57,7 @@ class BroadcastController extends Controller
 
         $photoPath = null;
         if ($request->hasFile('photo')) {
-            $photoPath = $request->file('photo')->store('broadcasts', 'public');
+            $photoPath = $request->file('photo')->store('broadcasts/' . TenantContext::id(), 'public');
         }
 
         $type = $request->schedule_type;

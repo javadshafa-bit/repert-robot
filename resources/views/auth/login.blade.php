@@ -19,6 +19,12 @@
                 <p class="mt-2 text-sm text-gray-600">سامانه گزارش‌گیری حوزه هنری</p>
             </div>
 
+            @if(session("success"))
+                <div class="bg-green-100 border border-green-200 text-green-800 text-sm p-4 rounded-lg mb-4">
+                    {{ session("success") }}
+                </div>
+            @endif
+
             @if($errors->any())
                 <div class="bg-red-100 border border-red-200 text-red-800 text-sm p-4 rounded-lg mb-4">
                     {{ $errors->first() }}
@@ -47,6 +53,11 @@
                     <button type="submit" class="w-full py-3 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none mt-4">
                         ورود
                     </button>
+
+                    <p class="text-center text-sm text-gray-600 mt-2">
+                        سازمان شما هنوز حساب ندارد؟
+                        <a href="{{ route('register') }}" class="text-blue-600 hover:underline">ثبت‌نام</a>
+                    </p>
                 </div>
             </form>
         </div>

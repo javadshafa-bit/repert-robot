@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class Report extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'representative_id', 'department_id', 'category_id', 'jalali_month', 'data',
     ];

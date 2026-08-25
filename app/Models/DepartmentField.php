@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class DepartmentField extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'department_id',
         'label',

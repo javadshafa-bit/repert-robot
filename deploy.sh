@@ -30,6 +30,18 @@ php artisan cache:clear
 echo "🗃️  running migrations..."
 php artisan migrate --force
 
+# ─── هشدار: مسیر وبهوک عوض شده است ─────────────────────────────────────────
+echo ""
+echo "\033[43;30m ⚠️  توجه \033[0m"
+echo "\033[33mمسیر وبهوک هر سازمان حالا /api/bot/webhook/{secret} است.\033[0m"
+echo "\033[33mتا وقتی این دستور را اجرا نکنی، ربات‌ها روی مسیر قدیمیِ سازگاری کار می‌کنند\033[0m"
+echo "\033[33m(یعنی همه‌ی پیام‌ها به سازمانِ پیش‌فرض می‌رود، نه سازمان خودشان):\033[0m"
+echo ""
+echo "    php artisan tenants:refresh-webhook"
+echo ""
+echo "\033[33mبعد از اجرای موفق آن، بلوک bot.webhook.legacy را از routes/web.php حذف کن.\033[0m"
+echo ""
+
 # ۶. کش کردن برای production
 echo "⚡ caching for production..."
 php artisan config:cache
@@ -50,6 +62,17 @@ php artisan view:cache
 
 # ۸. symlink storage
 php artisan storage:link --force 2>/dev/null || true
+
+# ۹. (فقط یک‌بار، بعد از دیپلویِ چندمستأجری) ثبت دوباره‌ی وبهوک بله
+# مسیر وبهوک از /api/bot/webhook به /api/bot/webhook/{secret} تغییر کرده است؛
+# تا این دستور اجرا نشود، ربات‌های فعلی پیامی دریافت نمی‌کنند.
+# عمداً خودکار اجرا نمی‌شود چون به API بله درخواست می‌زند:
+#
+#   php artisan tenants:refresh-webhook
+#
+# و برای ساخت حساب سوپرادمین پلتفرم (یک‌بار):
+#
+#   php artisan tenants:create-platform-admin owner@example.com --name="سوپرادمین"
 
 echo ""
 echo "✅ دیپلوی با موفقیت انجام شد!"

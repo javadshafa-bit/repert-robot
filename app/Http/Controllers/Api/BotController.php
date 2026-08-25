@@ -11,28 +11,46 @@ use App\Models\FieldOption;
 use App\Models\Report;
 use App\Models\Representative;
 use App\Models\Setting;
+use App\Models\Tenant;
+use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Morilog\Jalali\Jalalian;
 
 class BotController extends Controller
 {
     private $token;
     private $apiUrl;
+    private ?Tenant $tenant = null;
 
-    public function __construct()
+    /**
+     * وبهوک اختصاصی یک مستأجر.
+     * مستأجر از روی webhook_secret موجود در مسیر (route model binding) پیدا می‌شود؛
+     * توکن ربات هم از همان رکورد خوانده می‌شود، نه از تنظیمات سراسری.
+     */
+    public function handle(Request $request, Tenant $tenant)
     {
-        $this->token  = Setting::get('bot_token');
+        // مستأجر تاییدنشده/معلق یا بدون توکن: هیچ پردازشی نه، ولی به بله OK بده
+        // تا آپدیت را بارها دوباره نفرستد.
+        if (!$tenant->botIsUsable()) {
+            Log::info("bot webhook ignored for tenant#{$tenant->id} (status={$tenant->status})");
+            return response('OK', 200);
+        }
+
+        $this->tenant = $tenant;
+        $this->token  = $tenant->bot_token;
         $this->apiUrl = "https://tapi.bale.ai/bot{$this->token}/";
-    }
 
-    public function handle(Request $request)
-    {
+        // مستأجر درخواست قبلی نباید نشت کند (Octane / queue worker) — قبل از set پاک کن.
+        TenantContext::forget();
+        TenantContext::set($tenant);
+
         $update = $request->all();
-        Log::info(json_encode($update, JSON_UNESCAPED_UNICODE));
+        $this->logUpdate($tenant, $update);
 
         // همه‌ی پردازش این آپدیت داخل یک تراکنش با قفل روی ردیف BotState انجام می‌شود
         // تا اگر بله همین آپدیت را دوباره بفرستد یا کاربر دوبار پشت‌سرهم روی دکمه‌ای بزند،
@@ -44,6 +62,35 @@ class BotController extends Controller
         });
 
         return response('OK', 200);
+    }
+
+    /**
+     * لاگ آپدیت ورودی.
+     *
+     * بدنه‌ی کامل آپدیت شامل شماره تلفن و متن گزارش نمایندگان است؛ حالا که چند سازمان
+     * روی یک نصب‌اند، ذخیره‌ی کامل آن هم حجیم است هم حساس. در production فقط
+     * شناسه و نوع آپدیت لاگ می‌شود؛ بدنه‌ی کامل فقط در محیط‌های غیر production.
+     */
+    private function logUpdate(Tenant $tenant, array $update): void
+    {
+        if (app()->environment('production')) {
+            $type = match (true) {
+                isset($update['message'])        => 'message',
+                isset($update['edited_message']) => 'edited_message',
+                isset($update['callback_query']) => 'callback_query',
+                default                          => 'other',
+            };
+
+            Log::info('bot update', [
+                'tenant_id' => $tenant->id,
+                'update_id' => $update['update_id'] ?? null,
+                'type'      => $type,
+            ]);
+
+            return;
+        }
+
+        Log::info("tenant#{$tenant->id} " . json_encode($update, JSON_UNESCAPED_UNICODE));
     }
 
     private function processMessage($message)
@@ -706,7 +753,9 @@ class BotController extends Controller
             $fileUrl     = "https://tapi.bale.ai/file/bot{$this->token}/" . $remotePath;
             $fileContent = Http::get($fileUrl)->body();
             $extension   = pathinfo($remotePath, PATHINFO_EXTENSION) ?: pathinfo($originalName, PATHINFO_EXTENSION) ?: 'bin';
-            $fileName    = 'uploads/' . uniqid() . '.' . $extension;
+            // فایل‌ها روی دیسک public سرو می‌شوند؛ مسیر هر سازمان جداست و نام فایل
+            // به‌جای uniqid (که زمان‌محور و قابل حدس است) تصادفی ساخته می‌شود.
+            $fileName    = 'uploads/' . TenantContext::id() . '/' . Str::random(32) . '.' . $extension;
             Storage::disk('public')->put($fileName, $fileContent);
             return $fileName;
         }

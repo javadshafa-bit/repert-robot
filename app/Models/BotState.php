@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class BotState extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'chat_id', 'step', 'last_message_id', 'representative_id',
         'department_id',

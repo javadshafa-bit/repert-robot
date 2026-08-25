@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -9,7 +10,10 @@ use Illuminate\Support\Facades\DB;
 /**
  * انتقال داده‌ها از دیتابیس SQLite قدیمی (چابکان) به MySQL جدید.
  *
- *   php artisan db:import-sqlite /path/to/database.sqlite
+ *   php artisan db:import-sqlite /path/to/database.sqlite --tenant=1
+ *
+ * سازمان مقصد اجباری است: داده‌ی SQLite قدیمی تک‌سازمانی است و بدون tenant_id
+ * رکوردهایی می‌سازد که از دید کل اپ نامرئی‌اند.
  *
  * جدول‌های زیرساختی (migrations، cache، sessions، jobs) منتقل نمی‌شوند —
  * schema از قبل با migrate ساخته شده و این جدول‌ها داده‌ی معناداری ندارند.
@@ -18,6 +22,7 @@ class ImportFromSqlite extends Command
 {
     protected $signature = 'db:import-sqlite
                             {path : مسیر فایل database.sqlite}
+                            {--tenant= : شناسه سازمان مقصد (اجباری)}
                             {--dry-run : فقط گزارش بده، چیزی ننویس}';
 
     protected $description = 'انتقال داده‌ها از SQLite به دیتابیس فعلی (MySQL)';
@@ -45,6 +50,23 @@ class ImportFromSqlite extends Command
         }
 
         $dryRun = (bool) $this->option('dry-run');
+
+        // بدون سازمان مقصد ادامه نده — رکوردهای بدون tenant_id نامرئی می‌شوند.
+        if (!$this->option('tenant')) {
+            $this->error('گزینه‌ی --tenant اجباری است. مثال: php artisan db:import-sqlite path.sqlite --tenant=1');
+
+            return self::FAILURE;
+        }
+
+        $tenant = Tenant::find($this->option('tenant'));
+
+        if (!$tenant) {
+            $this->error('سازمان با این شناسه پیدا نشد.');
+
+            return self::FAILURE;
+        }
+
+        $this->info("سازمان مقصد: #{$tenant->id} — {$tenant->name}");
 
         Config::set('database.connections.legacy', [
             'driver'   => 'sqlite',
@@ -94,16 +116,29 @@ class ImportFromSqlite extends Command
                 continue;
             }
 
-            $dst->table($table)->truncate();
+            // جدول‌های مستأجرمحور فقط برای همین سازمان پاک می‌شوند؛ truncate کامل
+            // داده‌ی بقیه‌ی سازمان‌ها را هم می‌برد.
+            $hasTenantColumn = in_array('tenant_id', $dstColumns, true);
 
-            $inserted = 0;
+            if ($hasTenantColumn) {
+                $dst->table($table)->where('tenant_id', $tenant->id)->delete();
+            } else {
+                $dst->table($table)->truncate();
+            }
+
+            $inserted   = 0;
+            $tenantId   = $tenant->id;
+
             $src->table($table)->orderBy(
                 in_array('id', $srcColumns, true) ? 'id' : $srcColumns[0]
-            )->chunk(200, function ($rows) use ($dst, $table, $shared, &$inserted) {
-                $batch = $rows->map(function ($row) use ($shared) {
+            )->chunk(200, function ($rows) use ($dst, $table, $shared, &$inserted, $hasTenantColumn, $tenantId) {
+                $batch = $rows->map(function ($row) use ($shared, $hasTenantColumn, $tenantId) {
                     $out = [];
                     foreach ($shared as $col) {
                         $out[$col] = ((array) $row)[$col] ?? null;
+                    }
+                    if ($hasTenantColumn) {
+                        $out['tenant_id'] = $tenantId;
                     }
                     return $out;
                 })->all();
@@ -112,7 +147,9 @@ class ImportFromSqlite extends Command
                 $inserted += count($batch);
             });
 
-            $dstCount = $dst->table($table)->count();
+            $dstCount = $hasTenantColumn
+                ? $dst->table($table)->where('tenant_id', $tenant->id)->count()
+                : $dst->table($table)->count();
             $status   = $srcCount === $dstCount ? '✅' : '⚠️ اختلاف!';
             if ($dropped) {
                 $status .= ' (ستون بی‌استفاده: '.implode(',', $dropped).')';

@@ -3,7 +3,8 @@
 namespace App\Services;
 
 use App\Models\BroadcastMessage;
-use App\Models\Setting;
+use App\Models\Tenant;
+use App\Support\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -11,21 +12,30 @@ use Illuminate\Support\Facades\Storage;
 
 class BroadcastSender
 {
-    private string $apiUrl;
+    private string $apiUrl = '';
 
-    public function __construct()
-    {
-        $token        = Setting::get('bot_token');
-        $this->apiUrl = "https://tapi.bale.ai/bot{$token}/";
-    }
-
-    /** ارسال پیام به همه گیرندگان و به‌روزرسانی آمار */
+    /**
+     * ارسال پیام به همه گیرندگان و به‌روزرسانی آمار.
+     * توکن ربات از رکورد مستأجرِ همین پیام خوانده می‌شود، نه از تنظیمات سراسری.
+     */
     public function send(BroadcastMessage $message): void
     {
+        $tenant = Tenant::find($message->tenant_id);
+
+        if (!$tenant || !$tenant->botIsUsable()) {
+            Log::warning("Broadcast #{$message->id} skipped: tenant#{$message->tenant_id} bot is not usable.");
+            return;
+        }
+
+        $this->apiUrl = $tenant->botApiUrl();
+
         $sent   = 0;
         $failed = 0;
 
-        foreach ($message->recipientsQuery()->get() as $rep) {
+        // گیرندگان باید در بستر همان مستأجر خوانده شوند
+        $recipients = TenantContext::forTenant($tenant, fn() => $message->recipientsQuery()->get());
+
+        foreach ($recipients as $rep) {
             try {
                 $ok = $message->photo_path
                     ? $this->sendPhoto($rep->chat_id, $message->photo_path, $message->body)

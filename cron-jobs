@@ -1,1 +1,5 @@
+# scheduler لاراول؛ همه‌ی کارهای زمان‌بندی‌شده از داخل routes/console.php اجرا می‌شوند:
+#   - broadcast:send-due    هر دقیقه
+#   - subscriptions:expire  هر شب ۰۰:۱۰ به وقت تهران
+# عمداً برای هر دستور یک کرون جدا تعریف نشده تا دوبار اجرا نشوند.
 * * * * * cd /var/www/html && php artisan schedule:run >> /dev/null 2>&1

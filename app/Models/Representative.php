@@ -1,9 +1,12 @@
 <?php
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class Representative extends Model {
+    use BelongsToTenant;
+
     protected $fillable = [
         'province_id','first_name','last_name',
         'phone_number','chat_id','is_connected',

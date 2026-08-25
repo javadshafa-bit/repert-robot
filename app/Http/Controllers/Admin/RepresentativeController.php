@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Province;
 use App\Models\Representative;
+use App\Support\TenantRule;
 use Illuminate\Http\Request;
 
 class RepresentativeController extends Controller {
@@ -34,10 +35,10 @@ class RepresentativeController extends Controller {
 
     public function store(Request $request) {
         $request->validate([
-            'province_id'  => 'required|exists:provinces,id',
+            'province_id'  => ['required', TenantRule::exists('provinces')],
             'first_name'   => 'required|string|max:100',
             'last_name'    => 'required|string|max:100',
-            'phone_number' => 'required|string|unique:representatives,phone_number',
+            'phone_number' => ['required', 'string', TenantRule::unique('representatives', 'phone_number')],
         ], [
             'province_id.required'       => 'استان الزامی است.',
             'first_name.required'        => 'نام الزامی است.',
@@ -57,10 +58,10 @@ class RepresentativeController extends Controller {
 
     public function update(Request $request, Representative $representative) {
         $request->validate([
-            'province_id'  => 'required|exists:provinces,id',
+            'province_id'  => ['required', TenantRule::exists('provinces')],
             'first_name'   => 'required|string|max:100',
             'last_name'    => 'required|string|max:100',
-            'phone_number' => 'required|string|unique:representatives,phone_number,'.$representative->id,
+            'phone_number' => ['required', 'string', TenantRule::unique('representatives', 'phone_number')->ignore($representative->id)],
         ]);
 
         $representative->update($request->only('province_id','first_name','last_name','phone_number'));

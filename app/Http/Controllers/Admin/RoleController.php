@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Role;
+use App\Support\TenantContext;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class RoleController extends Controller
 {
@@ -24,11 +26,13 @@ class RoleController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name'        => 'required|string|max:60|unique:roles,name|regex:/^[a-z0-9_]+$/',
+            // یکتایی نام نقش per-tenant است، نه سراسری
+            'name'        => ['required', 'string', 'max:60', 'regex:/^[a-z0-9_]+$/',
+                              Rule::unique('roles', 'name')->where('tenant_id', TenantContext::id())],
             'label'       => 'required|string|max:100',
             'permissions' => 'nullable|array',
             'departments' => 'nullable|array',
-            'departments.*' => 'exists:departments,id',
+            'departments.*' => [Rule::exists('departments', 'id')->where('tenant_id', TenantContext::id())],
         ], [
             'name.regex' => 'نام باید فقط شامل حروف انگلیسی کوچک، اعداد و زیرخط باشد.',
         ]);
@@ -63,7 +67,7 @@ class RoleController extends Controller
             'label'         => 'required|string|max:100',
             'permissions'   => 'nullable|array',
             'departments'   => 'nullable|array',
-            'departments.*' => 'exists:departments,id',
+            'departments.*' => [Rule::exists('departments', 'id')->where('tenant_id', TenantContext::id())],
         ]);
 
         $allDepts = $request->boolean('all_departments');

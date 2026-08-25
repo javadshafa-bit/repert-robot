@@ -3,24 +3,39 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Models\Tenant;
+use App\Services\BotConnector;
+use App\Support\TenantContext;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 
 class SettingController extends Controller
 {
+    public function __construct(private BotConnector $bot) {}
+
+    /** مستأجر جاری (کاربر لاگین‌شده حتماً به یک مستأجر تاییدشده تعلق دارد) */
+    private function tenant(): Tenant
+    {
+        return TenantContext::get();
+    }
+
     public function index()
     {
+        $tenant = $this->tenant();
+
         $flowSteps = json_decode(Setting::get('bot_flow_steps', '["month","department","category"]'), true)
             ?: ['month', 'department', 'category'];
 
         $settings = [
-            'bot_token'       => Setting::get('bot_token'),
-            'bot_connected'   => Setting::get('bot_connected', '0'),
+            // توکن ربات per-tenant است و روی رکورد سازمان ذخیره می‌شود، نه در جدول settings
+            'bot_token'       => $tenant->bot_token,
+            'bot_connected'   => $tenant->bot_connected_at ? '1' : '0',
+            'bot_username'    => $tenant->bot_username,
+            'webhook_url'     => $tenant->webhookUrl(),
             'welcome_message' => Setting::get('welcome_message', 'به ربات گزارش‌دهی خوش آمدید.'),
             'error_message'   => Setting::get('error_message', 'شما مجاز به استفاده از این ربات نیستید.'),
         ];
 
-        return view('admin.settings.index', compact('settings', 'flowSteps'));
+        return view('admin.settings.index', compact('settings', 'flowSteps', 'tenant'));
     }
 
     public function update(Request $request)
@@ -28,10 +43,11 @@ class SettingController extends Controller
         $request->validate([
             'welcome_message' => 'required|string',
             'error_message'   => 'required|string',
+            'bot_token'       => 'nullable|string|max:255',
         ]);
 
         if ($request->filled('bot_token')) {
-            Setting::set('bot_token', $request->bot_token);
+            $this->tenant()->forceFill(['bot_token' => trim($request->bot_token)])->save();
         }
 
         Setting::set('welcome_message', $request->welcome_message);
@@ -56,25 +72,27 @@ class SettingController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /** ثبت وبهوک اختصاصی این سازمان روی بله */
     public function connect()
     {
-        $token = Setting::get('bot_token');
-        if (!$token) {
+        $tenant = $this->tenant();
+
+        if (!$tenant->bot_token) {
             return back()->with('error', 'ابتدا توکن ربات را وارد کنید.');
         }
 
-        $webhookUrl = url('/api/bot/webhook');
+        $result = $this->bot->setWebhook($tenant);
 
-        $response = Http::post("https://tapi.bale.ai/bot{$token}/setWebhook", [
-            'url' => $webhookUrl,
-        ]);
+        return $result['ok']
+            ? back()->with('success', $result['message'])
+            : back()->with('error', 'خطا در اتصال: ' . $result['message']);
+    }
 
-        if ($response->successful() && $response->json('ok')) {
-            Setting::set('bot_connected', '1');
-            return back()->with('success', 'ربات با موفقیت متصل شد.');
-        }
+    /** قطع اتصال ربات: حذف وبهوک روی بله + پاک کردن توکن */
+    public function disconnect()
+    {
+        $this->bot->disconnect($this->tenant());
 
-        Setting::set('bot_connected', '0');
-        return back()->with('error', 'خطا در اتصال: ' . $response->json('description', 'خطای ناشناخته'));
+        return back()->with('success', 'اتصال ربات قطع شد.');
     }
 }

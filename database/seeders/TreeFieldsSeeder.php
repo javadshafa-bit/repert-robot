@@ -2,8 +2,10 @@
 
 namespace Database\Seeders;
 
+use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * ساختار درختی سه دسته‌بندی:
@@ -13,17 +15,34 @@ use Illuminate\Support\Facades\DB;
  */
 class TreeFieldsSeeder extends Seeder
 {
+    /** سازمانی که این ساختار برایش ساخته می‌شود */
+    private int $tenantId;
+
     public function run(): void
     {
+        // این seeder با DB::table می‌نویسد و از global scope عبور می‌کند؛ بدون سازمانِ مشخص
+        // رکوردهایی با tenant_id = null می‌سازد که از دید کل اپ نامرئی‌اند. پس اجباری است:
+        $tenantId = TenantContext::id();
+
+        if ($tenantId === null) {
+            throw new RuntimeException(
+                'TreeFieldsSeeder بدون سازمان مشخص اجرا نمی‌شود. از این دستور استفاده کن: '
+                . 'php artisan tenants:seed-tree {tenant}'
+            );
+        }
+
+        $this->tenantId = $tenantId;
+
         // اگر قبلاً اجرا شده باشد، دوباره اجرا نشود
-        if (DB::table('categories')->whereIn('name', ['هنری', 'تجسمی', 'اجرایی'])->exists()) {
+        if (DB::table('categories')->where('tenant_id', $this->tenantId)
+                ->whereIn('name', ['هنری', 'تجسمی', 'اجرایی'])->exists()) {
             $this->command->warn('دسته‌بندی‌ها قبلاً ایجاد شده‌اند. Seeder رد شد.');
             return;
         }
 
-        $honariId   = DB::table('categories')->insertGetId(['name' => 'هنری',   'sort_order' => 1, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
-        $tajasomiId = DB::table('categories')->insertGetId(['name' => 'تجسمی',  'sort_order' => 2, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
-        $ejraiiId   = DB::table('categories')->insertGetId(['name' => 'اجرایی', 'sort_order' => 3, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $honariId   = DB::table('categories')->insertGetId(['tenant_id' => $this->tenantId, 'name' => 'هنری',   'sort_order' => 1, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $tajasomiId = DB::table('categories')->insertGetId(['tenant_id' => $this->tenantId, 'name' => 'تجسمی',  'sort_order' => 2, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $ejraiiId   = DB::table('categories')->insertGetId(['tenant_id' => $this->tenantId, 'name' => 'اجرایی', 'sort_order' => 3, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
 
         $this->buildHonari($honariId);
         $this->buildTajasomi($tajasomiId);
@@ -38,6 +57,7 @@ class TreeFieldsSeeder extends Seeder
     private function field(int $catId, string $label, string $type, bool $multi = false, ?int $parentOptId = null, int $sort = 0): int
     {
         return DB::table('category_fields')->insertGetId([
+            'tenant_id'        => $this->tenantId,
             'category_id'      => $catId,
             'label'            => $label,
             'type'             => $type,
@@ -56,6 +76,7 @@ class TreeFieldsSeeder extends Seeder
     private function option(int $fieldId, string $label, int $sort = 0): int
     {
         return DB::table('field_options')->insertGetId([
+            'tenant_id'  => $this->tenantId,
             'field_id'   => $fieldId,
             'label'      => $label,
             'sort_order' => $sort,

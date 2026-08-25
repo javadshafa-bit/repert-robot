@@ -6,6 +6,7 @@ use App\Models\Province;
 use App\Models\Representative;
 use App\Models\Report;
 use App\Models\Category;
+use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -31,8 +32,13 @@ class DashboardController extends Controller {
             ->sortBy('jalali_month')
             ->values();
 
+        // کوئری‌های تجمیعی زیر با DB::table نوشته شده‌اند و global scope مدل‌ها
+        // روی آن‌ها اعمال نمی‌شود؛ پس فیلتر مستأجر دستی اضافه می‌شود.
+        $tenantId = TenantContext::id();
+
         // نمودار گزارش‌ها بر اساس دپارتمان (فیلتر استان اعمال می‌شود)
         $reportsByDept = DB::table('reports')
+            ->where('reports.tenant_id', $tenantId)
             ->join('departments', 'reports.department_id', '=', 'departments.id')
             ->join('representatives as reps', 'reports.representative_id', '=', 'reps.id')
             ->when($provinceId, fn($q) => $q->where('reps.province_id', $provinceId))
@@ -43,6 +49,7 @@ class DashboardController extends Controller {
 
         // نمودار گزارش‌ها بر اساس دسته‌بندی (فیلتر استان اعمال می‌شود)
         $reportsByCategory = DB::table('reports')
+            ->where('reports.tenant_id', $tenantId)
             ->join('categories', 'reports.category_id', '=', 'categories.id')
             ->join('representatives as reps', 'reports.representative_id', '=', 'reps.id')
             ->when($provinceId, fn($q) => $q->where('reps.province_id', $provinceId))
@@ -54,6 +61,7 @@ class DashboardController extends Controller {
 
         // توزیع گزارش‌ها بر اساس استان (همیشه کلی، بدون فیلتر)
         $reportsByProvince = DB::table('reports')
+            ->where('reports.tenant_id', $tenantId)
             ->join('representatives', 'reports.representative_id', '=', 'representatives.id')
             ->join('provinces', 'representatives.province_id', '=', 'provinces.id')
             ->selectRaw('provinces.name as name, count(*) as total')

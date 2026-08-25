@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class FieldOption extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = ['field_id', 'label', 'sort_order'];
 
     /** فیلد option ای که این گزینه به آن تعلق دارد */

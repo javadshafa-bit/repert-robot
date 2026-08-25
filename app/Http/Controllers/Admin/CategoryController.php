@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\CategoryField;
 use App\Models\FieldOption;
+use App\Support\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -126,8 +127,8 @@ class CategoryController extends Controller
             'label'            => 'required|string|max:100',
             'description'      => 'nullable|string|max:255',
             'sort_order'       => 'integer|min:0',
-            'parent_option_id' => 'nullable|exists:field_options,id',
-            'parent_field_id'  => 'nullable|exists:category_fields,id',
+            'parent_option_id' => ['nullable', TenantRule::exists('field_options')],
+            'parent_field_id'  => ['nullable', TenantRule::exists('category_fields')],
             'type'             => ['required', 'string', Rule::in(['text', 'option', 'photo', 'link'])],
             'child_type'       => ['nullable', 'string', Rule::in(['text', 'option', 'photo', 'link'])],
             'child_label'      => 'nullable|string|max:100',
@@ -233,8 +234,8 @@ class CategoryController extends Controller
     public function reparentField(Request $request, Category $category, CategoryField $field)
     {
         $request->validate([
-            'parent_option_id' => 'nullable|exists:field_options,id',
-            'parent_field_id'  => 'nullable|exists:category_fields,id',
+            'parent_option_id' => ['nullable', TenantRule::exists('field_options')],
+            'parent_field_id'  => ['nullable', TenantRule::exists('category_fields')],
         ]);
         $field->update([
             'parent_option_id' => $request->parent_option_id ?: null,
@@ -275,7 +276,7 @@ class CategoryController extends Controller
     public function reparentOption(Request $request, Category $category, CategoryField $field, FieldOption $option)
     {
         $request->validate([
-            'field_id' => 'required|exists:category_fields,id',
+            'field_id' => ['required', TenantRule::exists('category_fields')],
         ]);
         $option->update(['field_id' => $request->field_id]);
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'گزینه جابجا شد.']);
@@ -287,7 +288,7 @@ class CategoryController extends Controller
     {
         $request->validate([
             'option_ids'   => 'required|array|min:1',
-            'option_ids.*' => 'exists:field_options,id',
+            'option_ids.*' => [TenantRule::exists('field_options')],
         ]);
 
         $sources = FieldOption::with('childFields.options.childFields.options.childFields')

@@ -1,10 +1,13 @@
 <?php
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class Role extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = ['name', 'label', 'permissions', 'all_departments'];
 
     protected $casts = [
