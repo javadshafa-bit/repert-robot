@@ -131,7 +131,11 @@
                 }
 
                 box.innerHTML = html;
-                payBtn.disabled = q.errors.length > 0;
+                payBtn.disabled    = q.errors.length > 0;
+                // مبلغ صفر یعنی تخفیف کامل: کاربر به درگاه نمی‌رود
+                payBtn.textContent = q.amount === 0 && !q.errors.length
+                    ? 'فعال‌سازی رایگان با کد تخفیف'
+                    : 'پرداخت و فعال‌سازی';
             }
 
             document.querySelectorAll('.js-mode').forEach(radio => radio.addEventListener('change', () => {

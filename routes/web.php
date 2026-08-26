@@ -62,6 +62,7 @@ Route::middleware(['admin.auth', 'tenant'])->prefix('billing')->name('billing.')
     // بازگشت از درگاه با GET است (پس CSRF موضوعیت ندارد) ولی throttle لازم دارد
     Route::get('/callback',  [BillingController::class, 'callback'])->middleware('throttle:30,1')->name('callback');
     Route::get('/invoices',  [BillingController::class, 'invoices'])->name('invoices');
+    Route::get('/receipt/{payment}', [BillingController::class, 'receipt'])->name('receipt');
 });
 
 // پنل سوپرادمین پلتفرم (مالک این نصب) — کاملاً جدا از پنل مستأجرها.

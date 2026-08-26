@@ -12,6 +12,9 @@ class Payment extends Model
 {
     use BelongsToTenant;
 
+    /** پرداختی که اصلاً به درگاه نرفته چون تخفیف کل مبلغ را پوشانده */
+    public const GATEWAY_DISCOUNT = 'discount';
+
     public const STATUS_PENDING  = 'pending';
     public const STATUS_PAID     = 'paid';
     public const STATUS_FAILED   = 'failed';
@@ -62,6 +65,12 @@ class Payment extends Model
     }
 
     /** مبلغ به ریال — زرین‌پال بر حسب ریال کار می‌کند */
+    /** آیا این اشتراک بدون پرداخت پول و فقط با تخفیف کامل فعال شده است؟ */
+    public function isFree(): bool
+    {
+        return $this->gateway === self::GATEWAY_DISCOUNT;
+    }
+
     public function amountInRials(): int
     {
         return $this->amount * 10;

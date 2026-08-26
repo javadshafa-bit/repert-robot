@@ -28,10 +28,18 @@ class PaymentProcessor
     ) {}
 
     /**
-     * ساخت رکورد پرداخت و برگرداندن آدرس درگاه.
+     * ساخت رکورد پرداخت.
+     *
      * پیش‌فاکتور دوباره سمت سرور حساب می‌شود؛ چیزی از فرم کاربر مبنا قرار نمی‌گیرد.
+     *
+     * دو خروجی ممکن:
+     *  - مبلغ > ۰  → تراکنش روی درگاه ساخته می‌شود و آدرس هدایت برمی‌گردد.
+     *  - مبلغ = ۰  → تخفیف کل مبلغ را پوشانده؛ اصلاً به درگاه نمی‌رویم (درگاه تراکنش
+     *    صفر نمی‌سازد) و اشتراک همان‌جا فعال می‌شود.
+     *
+     * @return array{payment: Payment, gateway_url: ?string}
      */
-    public function start(Tenant $tenant, ?User $user, string $mode, int $value, ?string $code, string $callbackUrl): string
+    public function start(Tenant $tenant, ?User $user, string $mode, int $value, ?string $code, string $callbackUrl): array
     {
         $quote  = $this->calculator->quote($mode, $value, $code);
         $errors = $this->calculator->validationErrors($quote);
@@ -40,6 +48,8 @@ class PaymentProcessor
             throw new PaymentException($errors[0]);
         }
 
+        $isFree = $quote['amount'] === 0;
+
         $payment = Payment::create([
             'user_id'          => $user?->id,
             'amount'           => $quote['amount'],
@@ -47,13 +57,53 @@ class PaymentProcessor
             'discount_code_id' => $quote['discount']?->id,
             'discount_amount'  => $quote['discount_amount'],
             'days_granted'     => $quote['days'],
-            'gateway'          => 'zarinpal',
+            'gateway'          => $isFree ? Payment::GATEWAY_DISCOUNT : 'zarinpal',
             'status'           => Payment::STATUS_PENDING,
         ]);
 
+        if ($isFree) {
+            return ['payment' => $this->completeFree($payment), 'gateway_url' => null];
+        }
+
         $description = "اشتراک {$quote['days']} روزه — {$tenant->name}";
 
-        return $this->gateway->request($payment, $callbackUrl, $description);
+        return [
+            'payment'     => $payment,
+            'gateway_url' => $this->gateway->request($payment, $callbackUrl, $description),
+        ];
+    }
+
+    /**
+     * فعال‌سازی اشتراکِ کاملاً تخفیف‌خورده، بدون درگاه.
+     *
+     * همان مسیر پرداخت موفق را می‌رود (مصرف کد تخفیف + تمدید + لاگ)، فقط بدون
+     * verify — چون پولی جابه‌جا نشده که تاییدی لازم داشته باشد.
+     */
+    private function completeFree(Payment $payment): Payment
+    {
+        return DB::transaction(function () use ($payment) {
+            $payment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+            if ($payment->status !== Payment::STATUS_PENDING) {
+                return $payment;
+            }
+
+            $payment->update([
+                'status'  => Payment::STATUS_PAID,
+                'paid_at' => now(),
+            ]);
+
+            $this->consumeDiscount($payment);
+
+            $this->subscriptions->grantDays(
+                $payment->tenant()->first(),
+                $payment->days_granted,
+                $payment->user_id,
+                "افزودن {$payment->days_granted} روز با کد تخفیف کامل (بدون پرداخت)"
+            );
+
+            return $payment;
+        });
     }
 
     /**

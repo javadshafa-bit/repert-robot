@@ -5,10 +5,16 @@
 @section('content')
     @if($payment->isPaid())
         <div class="bg-white border border-green-200 rounded-xl p-6">
-            <h1 class="text-lg font-bold text-green-800 mb-4">پرداخت با موفقیت انجام شد</h1>
+            <h1 class="text-lg font-bold text-green-800 mb-4">
+                {{ $payment->isFree() ? 'اشتراک شما فعال شد' : 'پرداخت با موفقیت انجام شد' }}
+            </h1>
 
             <dl class="text-sm space-y-2">
-                <div class="flex justify-between"><dt class="text-gray-500">کد رهگیری</dt><dd dir="ltr" class="font-mono">{{ $payment->ref_id }}</dd></div>
+                @if($payment->isFree())
+                    <div class="flex justify-between"><dt class="text-gray-500">نحوه‌ی فعال‌سازی</dt><dd>کد تخفیف ۱۰۰٪ — بدون پرداخت</dd></div>
+                @else
+                    <div class="flex justify-between"><dt class="text-gray-500">کد رهگیری</dt><dd dir="ltr" class="font-mono">{{ $payment->ref_id }}</dd></div>
+                @endif
                 <div class="flex justify-between"><dt class="text-gray-500">مبلغ پرداخت‌شده</dt><dd>{{ number_format($payment->amount) }} تومان</dd></div>
                 @if($payment->discount_amount > 0)
                     <div class="flex justify-between text-green-700"><dt>تخفیف اعمال‌شده</dt><dd>{{ number_format($payment->discount_amount) }} تومان</dd></div>

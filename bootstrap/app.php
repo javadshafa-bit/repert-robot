@@ -15,6 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Laravel آدرس‌ها را http می‌سازد و IP واقعی کاربر را نمی‌بیند.
         $middleware->trustProxies(at: '*');
 
+        // باید پیش از SubstituteBindings اجرا شود، وگرنه route model binding ممکن است
+        // با مستأجرِ درخواست قبلی انجام شود (زیر Octane یا queue worker ماندگار).
+        $middleware->prepend(\App\Http\Middleware\ResetTenantContext::class);
+
         $middleware->alias([
             'admin.auth' => \App\Http\Middleware\AdminAuth::class,
             'admin.can'  => \App\Http\Middleware\CheckPermission::class,

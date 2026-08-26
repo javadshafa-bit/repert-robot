@@ -318,6 +318,89 @@ class PaymentTest extends TestCase
         $this->assertStringContainsString('وجود ندارد', implode(' ', $response->json('errors')));
     }
 
+    // ── تخفیف ۱۰۰٪: بدون درگاه ──────────────────────────────────────────────
+
+    /** کد ۱۰۰٪ نباید به درگاه برود — درگاه تراکنش صفر نمی‌سازد */
+    public function test_full_discount_activates_subscription_without_the_gateway(): void
+    {
+        Http::fake();
+
+        $tenant = $this->makeTenant();
+        $admin  = $this->makeAdmin($tenant);
+
+        DiscountCode::create(['code' => 'FREE100', 'percent' => 100, 'is_active' => true]);
+
+        $response = $this->actingAs($admin)
+            ->post(route('billing.pay'), ['mode' => 'days', 'value' => 30, 'discount_code' => 'FREE100']);
+
+        $payment = Payment::withoutGlobalScopes()->firstOrFail();
+
+        $response->assertRedirect(route('billing.receipt', $payment));
+
+        $this->assertSame(0, $payment->amount);
+        $this->assertSame(150000, $payment->original_amount);
+        $this->assertSame(150000, $payment->discount_amount);
+        $this->assertSame(30, $payment->days_granted);
+        $this->assertSame(Payment::STATUS_PAID, $payment->status);
+        $this->assertSame(Payment::GATEWAY_DISCOUNT, $payment->gateway);
+        $this->assertTrue($payment->isFree());
+
+        $tenant->refresh();
+        $this->assertSame(Tenant::STATUS_ACTIVE, $tenant->status);
+        $this->assertSame(30, $tenant->subscriptionDaysLeft());
+
+        $this->assertSame(1, DiscountCode::firstOrFail()->used_count);
+
+        // هیچ درخواستی به زرین‌پال نرفته است (تماس setWebhook برای برگرداندن ربات طبیعی است)
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'zarinpal'));
+    }
+
+    public function test_full_discount_quote_has_no_errors(): void
+    {
+        $tenant = $this->makeTenant();
+        $admin  = $this->makeAdmin($tenant);
+
+        DiscountCode::create(['code' => 'FREE100', 'percent' => 100, 'is_active' => true]);
+
+        $this->actingAs($admin)
+            ->postJson(route('billing.quote'), ['mode' => 'days', 'value' => 30, 'discount_code' => 'FREE100'])
+            ->assertOk()
+            ->assertJson(['amount' => 0, 'days' => 30, 'errors' => []]);
+    }
+
+    /** رسید هر سازمان فقط برای خودش قابل دیدن است */
+    public function test_receipt_of_another_tenant_is_not_accessible(): void
+    {
+        Http::fake();
+
+        $tenant = $this->makeTenant();
+        $admin  = $this->makeAdmin($tenant);
+
+        DiscountCode::create(['code' => 'FREE100', 'percent' => 100, 'is_active' => true]);
+        $this->actingAs($admin)->post(route('billing.pay'), ['mode' => 'days', 'value' => 30, 'discount_code' => 'FREE100']);
+
+        $payment = Payment::withoutGlobalScopes()->firstOrFail();
+
+        $other = Tenant::create([
+            'name'                 => 'سازمان دیگر',
+            'owner_name'           => 'مدیر',
+            'email'                => 'other@example.com',
+            'status'               => Tenant::STATUS_ACTIVE,
+            'webhook_secret'       => Tenant::generateWebhookSecret(),
+            'subscription_ends_at' => now()->addMonth(),
+        ]);
+
+        $otherAdmin = User::create([
+            'tenant_id'      => $other->id,
+            'name'           => 'admin2',
+            'email'          => 'admin2@example.com',
+            'password'       => 'password123',
+            'is_super_admin' => true,
+        ]);
+
+        $this->actingAs($otherAdmin)->get(route('billing.receipt', $payment))->assertNotFound();
+    }
+
     // ── اعتبارسنجی مبلغ ─────────────────────────────────────────────────────
 
     public function test_amount_below_minimum_is_rejected(): void
@@ -330,6 +413,22 @@ class PaymentTest extends TestCase
             ->assertSessionHasErrors('amount');
 
         $this->assertSame(0, Payment::withoutGlobalScopes()->count());
+    }
+
+    /** مبلغ کمِ غیرصفر بعد از تخفیف همچنان قابل ارسال به درگاه نیست */
+    public function test_tiny_nonzero_amount_after_discount_is_rejected(): void
+    {
+        $tenant = $this->makeTenant();
+        $admin  = $this->makeAdmin($tenant);
+
+        DiscountCode::create(['code' => 'ALMOST', 'percent' => 99, 'is_active' => true]);
+
+        $response = $this->actingAs($admin)->postJson(route('billing.quote'), [
+            'mode' => 'amount', 'value' => 50000, 'discount_code' => 'ALMOST',
+        ])->assertOk();
+
+        $this->assertSame(500, $response->json('amount'));
+        $this->assertNotEmpty($response->json('errors'));
     }
 
     public function test_amount_mode_converts_money_to_days(): void

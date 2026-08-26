@@ -52,7 +52,7 @@ class BillingController extends Controller
         $data = $this->validateInput($request);
 
         try {
-            $url = $this->processor->start(
+            $result = $this->processor->start(
                 TenantContext::get(),
                 $request->user(),
                 $data['mode'],
@@ -64,7 +64,22 @@ class BillingController extends Controller
             return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
         }
 
-        return redirect()->away($url);
+        // تخفیف کامل: پولی جابه‌جا نشده، پس درگاهی هم در کار نیست
+        if ($result['gateway_url'] === null) {
+            return redirect()->route('billing.receipt', $result['payment'])
+                ->with('success', 'اشتراک شما با کد تخفیف فعال شد.');
+        }
+
+        return redirect()->away($result['gateway_url']);
+    }
+
+    /** رسید یک پرداخت — با global scope فقط پرداخت‌های همین سازمان قابل دیدن است */
+    public function receipt(Payment $payment)
+    {
+        return view('billing.receipt', [
+            'tenant'  => TenantContext::get()->fresh(),
+            'payment' => $payment,
+        ]);
     }
 
     /** بازگشت از درگاه — فعال‌سازی فقط پس از verify موفق سمت سرور */
