@@ -187,6 +187,9 @@ class BotController extends Controller
         } elseif (str_starts_with($data, 'branch_') && in_array($state->step, ['answering_field', 'editing_field'])) {
             $this->handleBranchSelected($chatId, $state, (int) str_replace('branch_', '', $data));
 
+        } elseif ($data === 'field_skip' && in_array($state->step, ['answering_field', 'editing_field'])) {
+            $this->handleFieldSkip($chatId, $state);
+
         } elseif ($data === 'field_multiple_done' && $state->step === 'answering_field') {
             $this->handleMultipleDone($chatId, $state, false);
 
@@ -419,8 +422,8 @@ class BotController extends Controller
         } elseif ($field->type === 'date') {
             $this->askDateField($chatId, $state, $field);
         } else {
-            $backKeyboard = ['inline_keyboard' => [[['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']]]];
-            $msgId = $this->sendMessage($chatId, $this->buildFieldPrompt($field), $backKeyboard);
+            $navKeyboard = ['inline_keyboard' => [$this->fieldNavRow($field)]];
+            $msgId = $this->sendMessage($chatId, $this->buildFieldPrompt($field), $navKeyboard);
             $state->update(['last_message_id' => $msgId, 'step' => 'answering_field']);
         }
     }
@@ -434,7 +437,7 @@ class BotController extends Controller
         if ($field->description) $prompt .= "\n📝 _{$field->description}_";
 
         $inlineKeyboard   = $options->map(fn($o) => [['text' => $o->label, 'callback_data' => "opt_{$o->id}"]])->toArray();
-        $inlineKeyboard[] = [['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']];
+        $inlineKeyboard[] = $this->fieldNavRow($field);
         $msgId = $this->sendMessage($chatId, $prompt, ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId, 'step' => 'answering_field']);
     }
@@ -668,9 +671,57 @@ class BotController extends Controller
         $msgId = $this->sendMessage(
             $chatId,
             $this->datePrompt($field),
-            JalaliCalendar::yearKeyboard($field->date_range, 0)
+            $this->withSkipButton(JalaliCalendar::yearKeyboard($field->date_range, 0), $field)
         );
         $state->update(['last_message_id' => $msgId, 'step' => $state->step === 'editing_field' ? 'editing_field' : 'answering_field']);
+    }
+
+    /**
+     * ردیف دکمه‌های زیر هر سوال.
+     *
+     * چک‌باکس «اجباری» فرم‌ساز تا امروز در ربات خوانده نمی‌شد و همه‌ی فیلدها
+     * عملاً اجباری بودند. حالا فیلدِ غیراجباری دکمه‌ی «(خالی)» می‌گیرد.
+     */
+    private function fieldNavRow(CategoryField $field): array
+    {
+        $row = [];
+        if (!$field->is_required) {
+            $row[] = ['text' => BotText::get('btn_skip_field'), 'callback_data' => 'field_skip'];
+        }
+        $row[] = ['text' => BotText::get('btn_back'), 'callback_data' => 'go_back'];
+        return $row;
+    }
+
+    /** دکمه‌ی «(خالی)» را به ردیف آخر یک کیبورد آماده اضافه می‌کند (تقویم) */
+    private function withSkipButton(array $keyboard, CategoryField $field): array
+    {
+        if ($field->is_required) return $keyboard;
+
+        $rows = $keyboard['inline_keyboard'];
+        if (!$rows) return $keyboard;
+
+        array_unshift($rows[count($rows) - 1], [
+            'text'          => BotText::get('btn_skip_field'),
+            'callback_data' => 'field_skip',
+        ]);
+        $keyboard['inline_keyboard'] = $rows;
+
+        return $keyboard;
+    }
+
+    /** کاربر «(خالی)» را زد: مقدار خالی ثبت می‌شود و سوال بعدی می‌آید */
+    private function handleFieldSkip(string $chatId, BotState $state): void
+    {
+        $field = $this->currentField($state);
+        if (!$field) { $this->askNextField($chatId, $state); return; }
+
+        // دکمه‌ی کهنه‌ی یک پیام قدیمی نباید فیلد اجباری را رد کند
+        if ($field->is_required) {
+            $this->sendMessage($chatId, BotText::get('err_field_required'));
+            return;
+        }
+
+        $this->storeAnswerAndAdvance($chatId, $state, $field, BotText::get('skipped_value'), $field->type);
     }
 
     /**
@@ -720,7 +771,7 @@ class BotController extends Controller
             $page = max(0, (int) substr($data, 5));
             $this->editCalendar($chatId, $state,
                 $this->datePrompt($field),
-                JalaliCalendar::yearKeyboard($range, $page));
+                $this->withSkipButton(JalaliCalendar::yearKeyboard($range, $page), $field));
             return;
         }
 
@@ -728,7 +779,7 @@ class BotController extends Controller
             $year = (int) substr($data, 5);
             $this->editCalendar($chatId, $state,
                 $this->datePrompt($field, $year),
-                JalaliCalendar::monthKeyboard($year, $range));
+                $this->withSkipButton(JalaliCalendar::monthKeyboard($year, $range), $field));
             return;
         }
 
@@ -736,7 +787,7 @@ class BotController extends Controller
             [$year, $month] = array_map('intval', explode('_', substr($data, 5)));
             $this->editCalendar($chatId, $state,
                 $this->datePrompt($field, $year, $month),
-                JalaliCalendar::dayKeyboard($year, $month, $range));
+                $this->withSkipButton(JalaliCalendar::dayKeyboard($year, $month, $range), $field));
             return;
         }
 
@@ -749,12 +800,12 @@ class BotController extends Controller
                 return;
             }
 
-            $this->storeDateAnswer($chatId, $state, $field, JalaliCalendar::formatLong($year, $month, $day));
+            $this->storeAnswerAndAdvance($chatId, $state, $field, JalaliCalendar::formatLong($year, $month, $day), 'date');
         }
     }
 
-    /** تاریخ انتخاب‌شده را مثل هر پاسخ دیگری در draft می‌نشاند */
-    private function storeDateAnswer(string $chatId, BotState $state, CategoryField $field, string $value): void
+    /** یک پاسخ تک‌مقداری را در draft می‌نشاند و به سوال بعدی می‌رود */
+    private function storeAnswerAndAdvance(string $chatId, BotState $state, CategoryField $field, string $value, string $type): void
     {
         $isEditing = $state->step === 'editing_field';
         $draft     = $state->draft_data ?? [];
@@ -771,7 +822,7 @@ class BotController extends Controller
             return;
         }
 
-        $draft[] = ['field_id' => $field->id, 'label' => $field->label, 'type' => 'date', 'value' => $value];
+        $draft[] = ['field_id' => $field->id, 'label' => $field->label, 'type' => $type, 'value' => $value];
         $this->popField($state);
         $this->prependAlwaysChildFields($state, $field);
         $state->update(['draft_data' => $draft]);

@@ -128,6 +128,12 @@ class BotText
                         'vars'    => [],
                         'rows'    => 2,
                     ],
+                    'btn_skip_field' => [
+                        'label'   => 'دکمه رد کردن سوال غیراجباری',
+                        'default' => '(خالی)',
+                        'vars'    => [],
+                        'rows'    => 1,
+                    ],
                     'btn_back' => [
                         'label'   => 'دکمه بازگشت',
                         'default' => '🔙 بازگشت',
@@ -260,6 +266,12 @@ class BotText
                         'vars'    => ['count'],
                         'rows'    => 1,
                     ],
+                    'skipped_value' => [
+                        'label'   => 'مقداری که برای سوال رد‌شده ثبت می‌شود',
+                        'default' => '(خالی)',
+                        'vars'    => [],
+                        'rows'    => 1,
+                    ],
                     'photo_uploaded_single' => [
                         'label'   => 'نمایش عکس تکی در پیش‌نمایش',
                         'default' => '[عکس آپلود شد]',
@@ -359,6 +371,12 @@ class BotText
                     'err_invalid_date' => [
                         'label'   => 'خطا: تاریخ نامعتبر یا خارج از محدوده',
                         'default' => '⚠️ این تاریخ معتبر نیست. لطفاً دوباره از تقویم انتخاب کنید.',
+                        'vars'    => [],
+                        'rows'    => 2,
+                    ],
+                    'err_field_required' => [
+                        'label'   => 'خطا: این فیلد اجباری است',
+                        'default' => '⚠️ این فیلد اجباری است و نمی‌توان خالی گذاشت.',
                         'vars'    => [],
                         'rows'    => 2,
                     ],
