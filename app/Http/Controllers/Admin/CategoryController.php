@@ -160,7 +160,15 @@ class CategoryController extends Controller
             'parent_field_id'  => $request->parent_field_id ?: null,
             'label'            => $request->label,
             'description'      => $request->description,
-            'sort_order'       => $request->sort_order ?? 0,
+            // صفرِ ثابت باعث می‌شد فیلد تازه sort_order برابر با برادرِ موجود
+            // بگیرد و ترتیبشان به بخت DB بیفتد.
+            'sort_order'       => $request->filled('sort_order')
+                ? (int) $request->sort_order
+                : $this->nextSortOrder(
+                    $category->id,
+                    $request->parent_option_id ?: null,
+                    $request->parent_field_id ?: null
+                  ),
             'type'             => $request->type,
             'is_required'      => $request->boolean('is_required', true),
             'is_multiple'      => $request->type === 'date' ? false : $request->boolean('is_multiple', false),
@@ -182,6 +190,76 @@ class CategoryController extends Controller
 
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد اضافه شد.', 'field_id' => $field->id]);
         return back()->with('success', 'فیلد اضافه شد.');
+    }
+
+    /** شماره‌ی ترتیب بعدی در همان گروه برادرها */
+    private function nextSortOrder(int $categoryId, ?int $parentOptionId, ?int $parentFieldId): int
+    {
+        $q = CategoryField::where('category_id', $categoryId);
+
+        if ($parentFieldId)      $q->where('parent_field_id', $parentFieldId);
+        elseif ($parentOptionId) $q->where('parent_option_id', $parentOptionId);
+        else $q->whereNull('parent_field_id')->whereNull('parent_option_id');
+
+        return (int) ($q->max('sort_order') ?? -1) + 1;
+    }
+
+    /**
+     * درج یک زیرفیلد همیشگی *در وسط زنجیره*:
+     *   والد → [فیلد تازه] → زیرفیلدهای همیشگیِ قبلیِ والد
+     *
+     * فرم‌ساز تا امروز فقط «افزودن زیر مقصد» را بلد بود؛ اگر مقصد از قبل
+     * زیرفیلد داشت نتیجه دوراهی می‌شد نه زنجیره، و درج بین دو گره اصلاً
+     * ممکن نبود.
+     */
+    public function insertFieldInChain(Request $request, Category $category, CategoryField $field)
+    {
+        $request->validate([
+            'label'       => 'required|string|max:100',
+            'description' => 'nullable|string|max:255',
+            'type'        => ['required', 'string', Rule::in(['text', 'option', 'photo', 'link', 'date'])],
+            'date_range'  => ['nullable', 'string', Rule::in(['past', 'future', 'any'])],
+        ]);
+
+        if ($field->category_id !== $category->id) {
+            return $this->treeError($request, 'این فیلد به این دسته‌بندی تعلق ندارد.');
+        }
+
+        $result = DB::transaction(function () use ($category, $field, $request) {
+            $existing = CategoryField::where('parent_field_id', $field->id)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+
+            $new = $category->fields()->create([
+                'parent_field_id' => $field->id,
+                'label'           => $request->label,
+                'description'     => $request->description,
+                'type'            => $request->type,
+                'sort_order'      => 0,
+                'is_required'     => $request->boolean('is_required', true),
+                'is_multiple'     => false,
+                'date_range'      => $request->date_range ?: 'any',
+            ]);
+
+            // بچه‌های قبلی زیر فیلد تازه می‌روند و همان‌جا از نو شماره می‌خورند
+            foreach ($existing as $i => $child) {
+                $child->update(['parent_field_id' => $new->id, 'sort_order' => $i]);
+            }
+
+            return ['field' => $new, 'moved' => $existing->pluck('id')->all()];
+        });
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success'   => true,
+                'message'   => 'فیلد در زنجیره درج شد.',
+                'field_id'  => $result['field']->id,
+                'moved_ids' => $result['moved'],
+            ]);
+        }
+
+        return back()->with('success', 'فیلد در زنجیره درج شد.');
     }
 
     public function updateField(Request $request, Category $category, CategoryField $field)

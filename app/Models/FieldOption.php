@@ -20,6 +20,6 @@ class FieldOption extends Model
     /** فیلدهای فرزند که فقط وقتی این گزینه انتخاب شود نمایش داده می‌شوند */
     public function childFields()
     {
-        return $this->hasMany(CategoryField::class, 'parent_option_id')->orderBy('sort_order');
+        return $this->hasMany(CategoryField::class, 'parent_option_id')->orderBy('sort_order')->orderBy('id');
     }
 }

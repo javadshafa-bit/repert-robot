@@ -740,6 +740,26 @@ async function vtreeUndo() {
             ok = allOk;
         }
 
+        // درج در زنجیره → اول بچه‌ها را به والد قبلی برگردان، بعد فیلد تازه را
+        // حذف کن. ترتیب حیاتی است: حذف در سرور بازگشتی است و اگر بچه‌ها هنوز
+        // زیرش باشند آن‌ها هم پاک می‌شوند.
+        else if (action.type === 'insert_field') {
+            let allOk = true;
+            for (const cid of (action.movedChildIds || [])) {
+                const d = await doFetch(`/admin/categories/${catId}/fields/${cid}/reparent`, 'PATCH',
+                    { parent_option_id: null, parent_field_id: action.parentFieldId }, true);
+                if (!d.success) allOk = false;
+            }
+            if (allOk) {
+                const fd = new FormData(); fd.append('_method', 'DELETE');
+                const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}`, 'POST', fd);
+                allOk = d.success;
+            } else {
+                treeToast('❌ بازگرداندن زیرفیلدها ناموفق بود — فیلد حذف نشد', false);
+            }
+            ok = allOk;
+        }
+
         else if (action.type === 'move_field') {
             const fd = new FormData();
             fd.append('direction', action.direction);
@@ -1632,6 +1652,90 @@ async function _paletteCreateAlwaysChildField(parentFieldId, type) {
     }
 }
 
+/** زیرفیلدهای همیشگیِ یک گره، از روی DOM — بدون رفت‌وبرگشت با سرور */
+function _alwaysChildNodes(el) {
+    const li = el.closest('li');
+    if (!li) return [];
+    const ul = li.querySelector(':scope > ul.vtree-always-ul');
+    if (!ul) return [];
+    return [...ul.querySelectorAll(':scope > li > .vtree-node')];
+}
+
+/** دیالوگ انتخاب: شاخه‌ی موازی یا درج در زنجیره؟ → 'chain' | 'branch' | null */
+function _askInsertMode(targetLabel) {
+    return new Promise(resolve => {
+        const back = document.createElement('div');
+        back.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(17,24,39,.45);' +
+            'display:flex;align-items:center;justify-content:center';
+
+        const btn = 'display:block;width:100%;text-align:right;padding:.6rem .8rem;margin-bottom:.5rem;' +
+            'border-radius:.6rem;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.7';
+
+        back.innerHTML =
+            '<div dir="rtl" style="background:#fff;border-radius:1rem;padding:1.25rem;max-width:27rem;width:90%;' +
+                 'box-shadow:0 20px 50px rgba(0,0,0,.25);font-family:inherit">' +
+              '<p id="_im-title" style="font-size:.88rem;font-weight:700;color:#111827;margin:0 0 .3rem"></p>' +
+              '<p style="font-size:.75rem;color:#6b7280;line-height:1.9;margin:0 0 1rem">' +
+                'فیلد تازه را کجا بگذارم؟</p>' +
+              '<button data-mode="chain" style="' + btn + ';border:1.5px solid #6366f1;background:#eef2ff;color:#3730a3">' +
+                '⛓ در زنجیره — بین این فیلد و زیرفیلد فعلی‌اش' +
+              '</button>' +
+              '<button data-mode="branch" style="' + btn + ';border:1.5px solid #e5e7eb;background:#fff;color:#374151">' +
+                '⑂ شاخه‌ی موازی — کنار زیرفیلد فعلی' +
+              '</button>' +
+              '<button data-mode="cancel" style="' + btn + ';border:none;background:transparent;color:#9ca3af;margin:0;text-align:center">' +
+                'انصراف' +
+              '</button>' +
+            '</div>';
+
+        // عنوان کاربر است، نه HTML — با textContent می‌نشیند تا تزریق نشود
+        back.querySelector('#_im-title').textContent = '«' + targetLabel + '» از قبل زیرفیلد همیشگی دارد';
+
+        const done = mode => { back.remove(); document.removeEventListener('keydown', onKey); resolve(mode); };
+        const onKey = e => { if (e.key === 'Escape') done(null); };
+
+        back.addEventListener('click', e => {
+            if (e.target === back) return done(null);
+            const b = e.target.closest('button[data-mode]');
+            if (!b) return;
+            done(b.dataset.mode === 'cancel' ? null : b.dataset.mode);
+        });
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(back);
+    });
+}
+
+/** فیلد تازه را وسط زنجیره می‌نشاند: والد → تازه → زیرفیلدهای قبلیِ والد */
+async function _paletteInsertInChain(parentFieldId, type) {
+    const catId  = _catId();
+    const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک', date: 'فیلد تاریخ' };
+    const label  = labels[type] || 'فیلد جدید';
+
+    const fd = new FormData();
+    fd.append('label', label);
+    fd.append('type', type);
+    fd.append('is_required', '1');
+
+    const r = await _postJson(`/admin/categories/${catId}/fields/${parentFieldId}/insert-in-chain`, fd);
+    if (!r.ok) { treeToast('❌ ' + (r.message || 'خطا در درج فیلد'), false); return; }
+
+    _pushUndo({
+        type: 'insert_field',
+        fieldId: r.data.field_id,
+        parentFieldId,
+        movedChildIds: r.data.moved_ids || [],
+        label: `درج "${label}" در زنجیره`,
+    });
+
+    treeToast('✅ فیلد در زنجیره درج شد — عنوان را ویرایش کنید');
+    await refreshTree();
+    requestAnimationFrame(() => {
+        const el = document.querySelector(`.vtree-node[data-field-id="${r.data.field_id}"]:not([data-option-id])`);
+        if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); vtreeEditField(el); }
+        else treeToast('⚠️ فیلد ساخته شد ولی در درخت یافت نشد — صفحه را رفرش کنید', false);
+    });
+}
+
 // ── Palette drag
 function vtreePaletteDrag(e, type) {
     _dndSource = { kind: 'palette', type };
@@ -1742,8 +1846,17 @@ async function vtreeDrop(e, el) {
             // روی فیلد گزینه‌ای → گزینه جدید بساز
             await _paletteCreateOption(el.dataset.fieldId);
         } else if (el.dataset.fieldId) {
-            // روی هر فیلد دیگری → زیرفیلد همیشگی بساز
-            await _paletteCreateAlwaysChildField(el.dataset.fieldId, palType);
+            // روی هر فیلد دیگری → زیرفیلد همیشگی.
+            // اگر مقصد از قبل زیرفیلد همیشگی دارد، «زیرش بگذار» مبهم است:
+            // شاخه‌ی موازی یا درج در زنجیره؟ قبلاً همیشه موازی می‌ساخت و
+            // کاربر فکر می‌کرد درگ اصلاً کار نکرده.
+            if (_alwaysChildNodes(el).length === 0) {
+                await _paletteCreateAlwaysChildField(el.dataset.fieldId, palType);
+            } else {
+                const mode = await _askInsertMode(el.dataset.label || 'این فیلد');
+                if (mode === 'chain')       await _paletteInsertInChain(el.dataset.fieldId, palType);
+                else if (mode === 'branch') await _paletteCreateAlwaysChildField(el.dataset.fieldId, palType);
+            }
         }
         return;
     }

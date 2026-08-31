@@ -36,7 +36,7 @@ class CategoryField extends Model
     /** گزینه‌های این فیلد (فقط اگر type = option) */
     public function options()
     {
-        return $this->hasMany(FieldOption::class, 'field_id')->orderBy('sort_order');
+        return $this->hasMany(FieldOption::class, 'field_id')->orderBy('sort_order')->orderBy('id');
     }
 
     /** گزینه والد (اگر این فیلد زیرفیلد یک option باشد) */
@@ -48,7 +48,7 @@ class CategoryField extends Model
     /** فیلدهایی که همیشه بعد از پاسخ دادن به این فیلد نمایش داده می‌شوند */
     public function alwaysChildFields()
     {
-        return $this->hasMany(CategoryField::class, 'parent_field_id')->orderBy('sort_order');
+        return $this->hasMany(CategoryField::class, 'parent_field_id')->orderBy('sort_order')->orderBy('id');
     }
 
     /** فیلد والدِ ثابت (اگر این فیلد زیرفیلد همیشگی یک فیلد دیگر باشد) */
