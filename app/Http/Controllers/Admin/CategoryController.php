@@ -129,9 +129,11 @@ class CategoryController extends Controller
             'sort_order'       => 'integer|min:0',
             'parent_option_id' => ['nullable', TenantRule::exists('field_options')],
             'parent_field_id'  => ['nullable', TenantRule::exists('category_fields')],
-            'type'             => ['required', 'string', Rule::in(['text', 'option', 'photo', 'link'])],
-            'child_type'       => ['nullable', 'string', Rule::in(['text', 'option', 'photo', 'link'])],
+            'type'             => ['required', 'string', Rule::in(['text', 'option', 'photo', 'link', 'date'])],
+            'child_type'       => ['nullable', 'string', Rule::in(['text', 'option', 'photo', 'link', 'date'])],
             'child_label'      => 'nullable|string|max:100',
+            'date_range'       => ['nullable', 'string', Rule::in(['past', 'future', 'any'])],
+            'child_date_range' => ['nullable', 'string', Rule::in(['past', 'future', 'any'])],
         ]);
 
         $field = $category->fields()->create([
@@ -142,7 +144,8 @@ class CategoryController extends Controller
             'sort_order'       => $request->sort_order ?? 0,
             'type'             => $request->type,
             'is_required'      => $request->boolean('is_required', true),
-            'is_multiple'      => $request->boolean('is_multiple', false),
+            'is_multiple'      => $request->type === 'date' ? false : $request->boolean('is_multiple', false),
+            'date_range'       => $request->date_range ?: 'any',
         ]);
 
         // اگر نوع زیرفیلد مشخص شده، یک فیلد فرزند همیشگی بساز
@@ -154,6 +157,7 @@ class CategoryController extends Controller
                 'sort_order'      => 0,
                 'is_required'     => true,
                 'is_multiple'     => false,
+                'date_range'      => $request->child_date_range ?: 'any',
             ]);
         }
 
@@ -166,16 +170,18 @@ class CategoryController extends Controller
         $request->validate([
             'label'       => 'required|string|max:100',
             'description' => 'nullable|string|max:255',
-            'type'        => ['nullable', 'string', Rule::in(['text', 'option', 'photo', 'link'])],
+            'type'        => ['nullable', 'string', Rule::in(['text', 'option', 'photo', 'link', 'date'])],
+            'date_range'  => ['nullable', 'string', Rule::in(['past', 'future', 'any'])],
         ]);
 
         $data = [
             'label'       => $request->label,
             'description' => $request->description,
             'is_required' => $request->boolean('is_required'),
-            'is_multiple' => $request->boolean('is_multiple'),
+            'is_multiple' => $request->type === 'date' ? false : $request->boolean('is_multiple'),
         ];
-        if ($request->filled('type')) $data['type'] = $request->type;
+        if ($request->filled('type'))       $data['type']       = $request->type;
+        if ($request->filled('date_range')) $data['date_range'] = $request->date_range;
 
         $field->update($data);
 

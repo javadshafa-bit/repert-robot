@@ -10,6 +10,7 @@
      data-label="{{ $field->label }}"
      data-description="{{ $field->description ?? '' }}"
      data-type="{{ $field->type }}"
+     data-date-range="{{ $field->date_range }}"
      data-is-required="{{ $field->is_required ? '1' : '0' }}"
      data-is-multiple="{{ $field->is_multiple ? '1' : '0' }}"
      data-parent-option-id="{{ $field->parent_option_id ?? '' }}"

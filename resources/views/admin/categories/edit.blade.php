@@ -87,6 +87,15 @@
                         <option value="option">گزینه (شاخه‌ای)</option>
                         <option value="photo">عکس</option>
                         <option value="link">لینک</option>
+                        <option value="date">تاریخ (انتخاب از تقویم)</option>
+                    </select>
+                </div>
+                <div id="root-date-range-wrap" class="hidden">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">محدوده تاریخ</label>
+                    <select name="date_range" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                        <option value="any">بدون محدودیت</option>
+                        <option value="past">فقط گذشته (تا امروز)</option>
+                        <option value="future">فقط آینده (از امروز)</option>
                     </select>
                 </div>
                 <div>
@@ -99,6 +108,15 @@
                         <option value="option">گزینه (شاخه‌ای)</option>
                         <option value="photo">عکس</option>
                         <option value="link">لینک</option>
+                        <option value="date">تاریخ (انتخاب از تقویم)</option>
+                    </select>
+                </div>
+                <div id="root-child-date-range-wrap" class="hidden">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">محدوده تاریخ زیرفیلد</label>
+                    <select name="child_date_range" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                        <option value="any">بدون محدودیت</option>
+                        <option value="past">فقط گذشته (تا امروز)</option>
+                        <option value="future">فقط آینده (از امروز)</option>
                     </select>
                 </div>
                 <div id="root-child-label-wrap" class="sm:col-span-2 hidden">
@@ -167,6 +185,15 @@
                     <option value="option">گزینه (شاخه‌ای)</option>
                     <option value="photo">عکس</option>
                     <option value="link">لینک</option>
+                    <option value="date">تاریخ (تقویم)</option>
+                </select>
+            </div>
+            <div id="vp-f-range-wrap" class="hidden">
+                <label class="block text-xs font-medium text-gray-500 mb-1">محدوده تاریخ</label>
+                <select id="vp-f-range" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                    <option value="any">بدون محدودیت</option>
+                    <option value="past">فقط گذشته (تا امروز)</option>
+                    <option value="future">فقط آینده (از امروز)</option>
                 </select>
             </div>
             <div>
@@ -215,6 +242,15 @@
                         <option value="option">گزینه (شاخه‌ای)</option>
                         <option value="photo">عکس</option>
                         <option value="link">لینک</option>
+                        <option value="date">تاریخ (تقویم)</option>
+                    </select>
+                </div>
+                <div id="vp-ac-range-wrap" class="hidden">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">محدوده تاریخ</label>
+                    <select id="vp-ac-range" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                        <option value="any">بدون محدودیت</option>
+                        <option value="past">فقط گذشته (تا امروز)</option>
+                        <option value="future">فقط آینده (از امروز)</option>
                     </select>
                 </div>
                 <button onclick="vtreeStoreAlwaysChild()"
@@ -248,6 +284,15 @@
                         <option value="option">گزینه (شاخه‌ای)</option>
                         <option value="photo">عکس</option>
                         <option value="link">لینک</option>
+                        <option value="date">تاریخ (تقویم)</option>
+                    </select>
+                </div>
+                <div id="vp-ao-range-wrap" class="hidden">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">محدوده تاریخ</label>
+                    <select id="vp-ao-range" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                        <option value="any">بدون محدودیت</option>
+                        <option value="past">فقط گذشته (تا امروز)</option>
+                        <option value="future">فقط آینده (از امروز)</option>
                     </select>
                 </div>
                 <div id="vp-ao-child-label-wrap" class="hidden">
@@ -306,6 +351,15 @@
                         <option value="option">گزینه (شاخه‌ای)</option>
                         <option value="photo">عکس</option>
                         <option value="link">لینک</option>
+                        <option value="date">تاریخ (تقویم)</option>
+                    </select>
+                </div>
+                <div id="vp-af-range-wrap" class="hidden">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">محدوده تاریخ</label>
+                    <select id="vp-af-range" class="py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-sm">
+                        <option value="any">بدون محدودیت</option>
+                        <option value="past">فقط گذشته (تا امروز)</option>
+                        <option value="future">فقط آینده (از امروز)</option>
                     </select>
                 </div>
                 <div>
@@ -430,6 +484,7 @@ ul.vtree {
 .vtree-type-text   { background:#f9fafb; border-color:#9ca3af; color:#374151; }
 .vtree-type-photo  { background:#eff6ff; border-color:#60a5fa; color:#1d4ed8; }
 .vtree-type-link   { background:#f0fdf4; border-color:#4ade80; color:#15803d; }
+.vtree-type-date   { background:#fffbeb; border-color:#fbbf24; color:#b45309; }
 
 /* ─── Vtree hover highlight ─── */
 .vtree-node:hover { filter: brightness(0.95); outline: 2px solid #6366f1; outline-offset: 1px; }
@@ -785,6 +840,8 @@ function vtreeEditField(el) {
     document.getElementById('vp-f-label').value      = el.dataset.label || '';
     document.getElementById('vp-f-desc').value       = el.dataset.description || '';
     document.getElementById('vp-f-type').value       = el.dataset.type || 'text';
+    document.getElementById('vp-f-range').value      = el.dataset.dateRange || 'any';
+    document.getElementById('vp-f-range-wrap').classList.toggle('hidden', el.dataset.type !== 'date');
     document.getElementById('vp-f-required').checked = el.dataset.isRequired === '1';
     document.getElementById('vp-f-multiple').checked = el.dataset.isMultiple === '1';
     document.getElementById('vp-f-multi-wrap').style.display = el.dataset.type === 'option' ? 'none' : '';
@@ -826,6 +883,7 @@ async function vtreeStoreAlwaysChild() {
     const fd = new FormData();
     fd.append('label',           label);
     fd.append('type',            document.getElementById('vp-ac-type').value);
+    fd.append('date_range',      document.getElementById('vp-ac-range').value);
     fd.append('parent_field_id', _vpFieldId);
     fd.append('is_required',     '1');
     const res  = await fetch(`/admin/categories/${catId}/fields`, {
@@ -852,6 +910,28 @@ function vtreeToggleAddOpt() {
 
 // نمایش/پنهان کردن فیلد عنوان child هنگام انتخاب نوع
 document.addEventListener('change', e => {
+    // فرم افزودن فیلد ریشه (select های name-based)
+    if (e.target.name === 'type') {
+        document.getElementById('root-date-range-wrap')
+            .classList.toggle('hidden', e.target.value !== 'date');
+    }
+    if (e.target.name === 'child_type') {
+        document.getElementById('root-child-date-range-wrap')
+            .classList.toggle('hidden', e.target.value !== 'date');
+    }
+
+    // انتخاب محدوده فقط وقتی نوع «تاریخ» است دیده می‌شود
+    const _rangeFor = {
+        'vp-f-type': 'vp-f-range-wrap',
+        'vp-ac-type': 'vp-ac-range-wrap',
+        'vp-af-type': 'vp-af-range-wrap',
+        'vp-ao-child-type': 'vp-ao-range-wrap',
+    };
+    if (_rangeFor[e.target.id]) {
+        document.getElementById(_rangeFor[e.target.id])
+            .classList.toggle('hidden', e.target.value !== 'date');
+    }
+
     if (e.target.id === 'vp-ao-child-type') {
         const wrap = document.getElementById('vp-ao-child-label-wrap');
         wrap.classList.toggle('hidden', !e.target.value);
@@ -893,6 +973,7 @@ async function vtreeStoreOption() {
         const fd2 = new FormData();
         fd2.append('label',            childLabel || label);
         fd2.append('type',             childType);
+        fd2.append('date_range',       document.getElementById('vp-ao-range').value);
         fd2.append('is_required',      '1');
         fd2.append('parent_option_id', data.option_id);
         await fetch(`/admin/categories/${catId}/fields`, {
@@ -914,6 +995,7 @@ async function vtreeStoreField() {
     const fd = new FormData();
     fd.append('label', label);
     fd.append('type', document.getElementById('vp-af-type').value);
+    fd.append('date_range', document.getElementById('vp-af-range').value);
     fd.append('parent_option_id', _vpOptId);
     if (document.getElementById('vp-af-required').checked) fd.append('is_required', '1');
     const res  = await fetch(`/admin/categories/${catId}/fields`, {
@@ -942,6 +1024,7 @@ async function vtreeSubmitField() {
     fd.append('label',       document.getElementById('vp-f-label').value);
     fd.append('description', document.getElementById('vp-f-desc').value);
     fd.append('type',        document.getElementById('vp-f-type').value);
+    fd.append('date_range',  document.getElementById('vp-f-range').value);
     if (document.getElementById('vp-f-required').checked) fd.append('is_required', '1');
     if (document.getElementById('vp-f-multiple').checked) fd.append('is_multiple', '1');
     const res  = await fetch(`/admin/categories/${catId}/fields/${_vpFieldId}`, {

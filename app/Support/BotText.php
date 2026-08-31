@@ -191,6 +191,30 @@ class BotText
                 ],
             ],
 
+            'date' => [
+                'label' => 'انتخاب تاریخ (تقویم)',
+                'items' => [
+                    'date_pick_year' => [
+                        'label'   => 'سرتیتر مرحله انتخاب سال',
+                        'default' => '📅 سال را انتخاب کنید:',
+                        'vars'    => [],
+                        'rows'    => 2,
+                    ],
+                    'date_pick_month' => [
+                        'label'   => 'سرتیتر مرحله انتخاب ماه',
+                        'default' => '📅 ماه را در سال {year} انتخاب کنید:',
+                        'vars'    => ['year'],
+                        'rows'    => 2,
+                    ],
+                    'date_pick_day' => [
+                        'label'   => 'سرتیتر مرحله انتخاب روز',
+                        'default' => '📅 روز را در {month} {year} انتخاب کنید:',
+                        'vars'    => ['year', 'month'],
+                        'rows'    => 2,
+                    ],
+                ],
+            ],
+
             'preview' => [
                 'label' => 'پیش‌نمایش و ثبت نهایی',
                 'items' => [
@@ -314,6 +338,18 @@ class BotText
                         'vars'    => ['type'],
                         'rows'    => 2,
                     ],
+                    'err_use_calendar' => [
+                        'label'   => 'خطا: تاریخ باید از تقویم انتخاب شود',
+                        'default' => '⚠️ برای این فیلد تاریخ را از تقویم بالا انتخاب کنید، نه با تایپ کردن.',
+                        'vars'    => [],
+                        'rows'    => 2,
+                    ],
+                    'err_invalid_date' => [
+                        'label'   => 'خطا: تاریخ نامعتبر یا خارج از محدوده',
+                        'default' => '⚠️ این تاریخ معتبر نیست. لطفاً دوباره از تقویم انتخاب کنید.',
+                        'vars'    => [],
+                        'rows'    => 2,
+                    ],
                     'err_option_invalid' => [
                         'label'   => 'خطا: گزینه نامعتبر',
                         'default' => '⚠️ این گزینه دیگر معتبر نیست، ادامه می‌دهیم.',
@@ -347,6 +383,7 @@ class BotText
                     'type_photo' => ['label' => 'نام نوع عکس',      'default' => 'عکس',  'vars' => [], 'rows' => 1],
                     'type_link'  => ['label' => 'نام نوع لینک',     'default' => 'لینک', 'vars' => [], 'rows' => 1],
                     'type_item'  => ['label' => 'نام نوع پیش‌فرض', 'default' => 'آیتم', 'vars' => [], 'rows' => 1],
+                    'type_date'  => ['label' => 'نام نوع تاریخ',    'default' => 'تاریخ', 'vars' => [], 'rows' => 1],
                 ],
             ],
         ];

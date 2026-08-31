@@ -127,6 +127,12 @@
                                         <option value="option">گزینه</option>
                                         <option value="photo">عکس</option>
                                         <option value="link">لینک</option>
+                                        <option value="date">تاریخ (تقویم)</option>
+                                    </select>
+                                    <select name="date_range" class="mt-1 py-1.5 px-3 block w-full border border-gray-300 rounded-lg text-xs">
+                                        <option value="any">تاریخ: بدون محدودیت</option>
+                                        <option value="past">تاریخ: فقط گذشته (تا امروز)</option>
+                                        <option value="future">تاریخ: فقط آینده (از امروز)</option>
                                     </select>
                                 </div>
                                 <div class="flex flex-col gap-1 justify-end">

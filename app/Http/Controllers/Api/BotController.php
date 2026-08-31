@@ -13,6 +13,7 @@ use App\Models\Representative;
 use App\Models\Setting;
 use App\Models\Tenant;
 use App\Support\BotText;
+use App\Support\JalaliCalendar;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -179,6 +180,9 @@ class BotController extends Controller
 
         } elseif (str_starts_with($data, 'opt_') && in_array($state->step, ['answering_field', 'editing_field'])) {
             $this->handleOptionSelected($chatId, $state, (int) str_replace('opt_', '', $data));
+
+        } elseif (str_starts_with($data, 'cal') && in_array($state->step, ['answering_field', 'editing_field'])) {
+            $this->handleCalendarCallback($chatId, $state, $data);
 
         } elseif (str_starts_with($data, 'branch_') && in_array($state->step, ['answering_field', 'editing_field'])) {
             $this->handleBranchSelected($chatId, $state, (int) str_replace('branch_', '', $data));
@@ -412,6 +416,8 @@ class BotController extends Controller
 
         if ($field->type === 'option') {
             $this->askOptionField($chatId, $state, $field);
+        } elseif ($field->type === 'date') {
+            $this->askDateField($chatId, $state, $field);
         } else {
             $backKeyboard = ['inline_keyboard' => [[['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']]]];
             $msgId = $this->sendMessage($chatId, $this->buildFieldPrompt($field), $backKeyboard);
@@ -500,6 +506,7 @@ class BotController extends Controller
         if (!$field) { $this->askNextField($chatId, $state); return; }
 
         if ($field->type === 'photo') { $this->sendMessage($chatId, BotText::get('err_need_photo')); return; }
+        if ($field->type === 'date')  { $this->sendMessage($chatId, BotText::get('err_use_calendar')); return; }
 
         if ($field->type === 'link') {
             // مسیر URL می‌تواند شامل حروف فارسی یا کاراکترهای percent-encoded باشد (\S = هر کاراکتر غیر فاصله)
@@ -527,6 +534,7 @@ class BotController extends Controller
         $field = $this->currentField($state);
         if (!$field) { $this->askNextField($chatId, $state); return; }
 
+        if ($field->type === 'date') { $this->sendMessage($chatId, BotText::get('err_use_calendar')); return; }
         if (in_array($field->type, ['text', 'link'])) { $this->sendMessage($chatId, BotText::get('err_need_text')); return; }
 
         $fileId   = $photo ? end($photo)['file_id'] : $document['file_id'];
@@ -605,6 +613,7 @@ class BotController extends Controller
         $field = $this->currentField($state);
         if (!$field) { $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); return; }
         if ($field->type === 'photo') { $this->sendMessage($chatId, BotText::get('err_need_photo_edit')); return; }
+        if ($field->type === 'date')  { $this->sendMessage($chatId, BotText::get('err_use_calendar')); return; }
 
         $draft = $state->draft_data ?? [];
         foreach ($draft as &$item) {
@@ -644,8 +653,126 @@ class BotController extends Controller
         $state->update(['step' => 'editing_field', 'field_queue' => [$fieldId]]);
         $this->deleteTrackedMessage($chatId, $state);
 
-        if ($field->type === 'option') $this->askOptionField($chatId, $state, $field);
+        if ($field->type === 'option')    $this->askOptionField($chatId, $state, $field);
+        elseif ($field->type === 'date')  $this->askDateField($chatId, $state, $field);
         else { $msgId = $this->sendMessage($chatId, $this->buildFieldPrompt($field)); $state->update(['last_message_id' => $msgId]); }
+    }
+
+    // ==========================================
+    // Date picker (تقویم شمسی)
+    // ==========================================
+
+    /** شروع انتخاب تاریخ: گرید سال‌ها */
+    private function askDateField(string $chatId, BotState $state, CategoryField $field): void
+    {
+        $msgId = $this->sendMessage(
+            $chatId,
+            $this->datePrompt($field, 'date_pick_year'),
+            JalaliCalendar::yearKeyboard($field->date_range, 0)
+        );
+        $state->update(['last_message_id' => $msgId, 'step' => $state->step === 'editing_field' ? 'editing_field' : 'answering_field']);
+    }
+
+    /** سرتیتر مرحله + عنوان و توضیح فیلد */
+    private function datePrompt(CategoryField $field, string $key, array $vars = []): string
+    {
+        $prompt = BotText::get($key, $vars) . "\n\n🔹 *{$field->label}*";
+        if ($field->description) $prompt .= "\n📝 _{$field->description}_";
+        return $prompt;
+    }
+
+    /**
+     * همه‌ی مراحل تقویم روی همان پیام ویرایش می‌شوند تا گفت‌وگو شلوغ نشود.
+     *   caly_<page> سال‌ها | calm_<y> ماه‌ها | cald_<y>_<m> روزها | calp_<y>_<m>_<d> نهایی
+     */
+    private function handleCalendarCallback(string $chatId, BotState $state, string $data): void
+    {
+        $field = $this->currentField($state);
+        if (!$field || $field->type !== 'date') {
+            $this->sendMessage($chatId, BotText::get('err_field_invalid'));
+            return;
+        }
+
+        $range = $field->date_range;
+
+        if (str_starts_with($data, 'caly_')) {
+            $page = max(0, (int) substr($data, 5));
+            $this->editCalendar($chatId, $state,
+                $this->datePrompt($field, 'date_pick_year'),
+                JalaliCalendar::yearKeyboard($range, $page));
+            return;
+        }
+
+        if (str_starts_with($data, 'calm_')) {
+            $year = (int) substr($data, 5);
+            $this->editCalendar($chatId, $state,
+                $this->datePrompt($field, 'date_pick_month', ['year' => $year]),
+                JalaliCalendar::monthKeyboard($year, $range));
+            return;
+        }
+
+        if (str_starts_with($data, 'cald_')) {
+            [$year, $month] = array_map('intval', explode('_', substr($data, 5)));
+            $this->editCalendar($chatId, $state,
+                $this->datePrompt($field, 'date_pick_day', [
+                    'year'  => $year,
+                    'month' => JalaliCalendar::MONTH_NAMES[$month] ?? $month,
+                ]),
+                JalaliCalendar::dayKeyboard($year, $month, $range));
+            return;
+        }
+
+        if (str_starts_with($data, 'calp_')) {
+            [$year, $month, $day] = array_map('intval', explode('_', substr($data, 5)));
+
+            // دکمه‌های کهنه (پیام قدیمی) می‌توانند تاریخ نامعتبر بفرستند
+            if (!JalaliCalendar::isValid($year, $month, $day) || !JalaliCalendar::inRange($year, $month, $day, $range)) {
+                $this->sendMessage($chatId, BotText::get('err_invalid_date'));
+                return;
+            }
+
+            $this->storeDateAnswer($chatId, $state, $field, JalaliCalendar::formatLong($year, $month, $day));
+        }
+    }
+
+    /** تاریخ انتخاب‌شده را مثل هر پاسخ دیگری در draft می‌نشاند */
+    private function storeDateAnswer(string $chatId, BotState $state, CategoryField $field, string $value): void
+    {
+        $isEditing = $state->step === 'editing_field';
+        $draft     = $state->draft_data ?? [];
+
+        if ($isEditing) {
+            foreach ($draft as &$item) {
+                if ($item['field_id'] === $field->id) { $item['value'] = $value; break; }
+            }
+            unset($item);
+            $state->update(['draft_data' => $draft, 'step' => 'preview']);
+            $this->deleteTrackedMessage($chatId, $state);
+            $this->sendMessage($chatId, BotText::get('edit_done'));
+            $this->showPreview($chatId, $state);
+            return;
+        }
+
+        $draft[] = ['field_id' => $field->id, 'label' => $field->label, 'type' => 'date', 'value' => $value];
+        $this->popField($state);
+        $this->prependAlwaysChildFields($state, $field);
+        $state->update(['draft_data' => $draft]);
+        $this->deleteTrackedMessage($chatId, $state);
+        $this->askNextField($chatId, $state);
+    }
+
+    /** متن و دکمه‌های همان پیام را عوض می‌کند تا گفت‌وگو پر از پیام تکراری نشود */
+    private function editCalendar(string $chatId, BotState $state, string $text, array $replyMarkup): void
+    {
+        if (!$state->last_message_id) return;
+
+        Http::post($this->apiUrl . 'editMessageText', [
+            'chat_id'      => $chatId,
+            'message_id'   => $state->last_message_id,
+            'text'         => $text,
+            'parse_mode'   => 'Markdown',
+            'reply_markup' => json_encode($replyMarkup),
+        ]);
     }
 
     // ==========================================
@@ -748,6 +875,7 @@ class BotController extends Controller
         return match ($type) {
             'photo' => BotText::get('type_photo'),
             'link'  => BotText::get('type_link'),
+            'date'  => BotText::get('type_date'),
             default => BotText::get('type_item'),
         };
     }

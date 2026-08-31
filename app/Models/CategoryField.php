@@ -20,6 +20,7 @@ class CategoryField extends Model
         'is_required',
         'type',
         'is_multiple',
+        'date_range',
     ];
 
     protected $casts = [
@@ -70,6 +71,7 @@ class CategoryField extends Model
                 'option' => 'گزینه',
                 'photo'  => 'عکس',
                 'link'   => 'لینک',
+                'date'   => 'تاریخ',
                 default  => 'ناشناخته',
             },
         );
@@ -83,8 +85,25 @@ class CategoryField extends Model
                 'option' => 'bg-purple-100 text-purple-700',
                 'photo'  => 'bg-blue-100 text-blue-700',
                 'link'   => 'bg-green-100 text-green-700',
+                'date'   => 'bg-amber-100 text-amber-700',
                 default  => 'bg-gray-100 text-gray-500',
             },
         );
+    }
+
+    /** محدوده‌ی مجاز تقویم؛ همیشه یکی از past/future/any */
+    public function getDateRangeAttribute($value): string
+    {
+        return in_array($value, ['past', 'future', 'any'], true) ? $value : 'any';
+    }
+
+    /** برچسب فارسی محدوده، برای نمایش در فرم‌ساز */
+    public function getDateRangeFaAttribute(): string
+    {
+        return match ($this->date_range) {
+            'past'   => 'فقط گذشته',
+            'future' => 'فقط آینده',
+            default  => 'بدون محدودیت',
+        };
     }
 }
