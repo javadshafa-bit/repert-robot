@@ -520,13 +520,17 @@ ul.vtree {
     position: static !important;
 }
 .vtree-wrap .vtree-always-ul::before { display: none !important; }
-.vtree-wrap .vtree-always-ul li {
+/* فقط فرزندِ مستقیم — نه هر li در عمق.
+   با سلکتور descendant، یک ردیف گزینه که در عمقِ یک زیرفیلد همیشگی
+   قرار می‌گرفت هم padding و هم خط افقی برادرهایش را از دست می‌داد
+   و دکمه‌ها بدون خط اتصال معلق می‌ماندند. */
+.vtree-wrap .vtree-always-ul > li {
     display: flex; flex-direction: column; align-items: center;
     padding: 0 !important; position: relative;
 }
-/* حذف خطوط horizontal connector برای always-child li ها */
-.vtree-wrap .vtree-always-ul li::before,
-.vtree-wrap .vtree-always-ul li::after { display: none !important; }
+/* حذف خطوط horizontal connector فقط برای خودِ always-child li ها */
+.vtree-wrap .vtree-always-ul > li::before,
+.vtree-wrap .vtree-always-ul > li::after { display: none !important; }
 .vtree-always-connector {
     font-size: 14px; color: #6366f1; line-height: 1;
     padding: 2px 0; user-select: none;
