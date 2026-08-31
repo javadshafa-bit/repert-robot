@@ -689,6 +689,28 @@ async function vtreeUndo() {
             ok = d.success;
         }
 
+        // paste گزینه‌ها → حذف گزینه‌های تازه (حذف سرور بازگشتی است)
+        else if (action.type === 'paste_options') {
+            let allOk = true;
+            for (const optId of action.optionIds) {
+                const fd = new FormData(); fd.append('_method', 'DELETE');
+                const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/options/${optId}`, 'POST', fd);
+                if (!d.success) allOk = false;
+            }
+            ok = allOk;
+        }
+
+        // paste فیلدها → حذف فیلدهای تازه
+        else if (action.type === 'paste_fields') {
+            let allOk = true;
+            for (const fid of action.fieldIds) {
+                const fd = new FormData(); fd.append('_method', 'DELETE');
+                const d = await doFetch(`/admin/categories/${catId}/fields/${fid}`, 'POST', fd);
+                if (!d.success) allOk = false;
+            }
+            ok = allOk;
+        }
+
         else if (action.type === 'reparent_field') {
             const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/reparent`, 'PATCH',
                 { parent_option_id: action.oldParentOptionId ?? null, parent_field_id: action.oldParentFieldId ?? null }, true);
@@ -1065,8 +1087,11 @@ function vtreeDuplicateField() {
     _fieldClipboard = [_vpFieldId];
     vtreePopoverClose();
     _fieldPasteMode = true;
+    _clearAllSelections();
     document.getElementById('palette-field-paste-section').style.display = 'flex';
-    document.querySelectorAll('.vtree-node').forEach(n => n.classList.add('vtree-paste-target'));
+    // فقط گره‌های فیلد؛ قبلاً گزینه‌ها هم نارنجی می‌شدند در حالی که کلیک روی آن‌ها
+    // هیچ کاری نمی‌کرد — UI مقصدی را وعده می‌داد که وجود نداشت.
+    _markTargets('.vtree-node[data-field-id]:not([data-option-id])');
     treeToast('روی فیلد مقصد کلیک کنید تا فیلد زیر آن paste شود');
 }
 
@@ -1108,6 +1133,52 @@ document.addEventListener('click', e => {
     }
 });
 
+// ─── کمک‌تابع‌های مشترک paste ────────────────────────────────────────────────
+
+/**
+ * POST + خواندن امن پاسخ.
+ * res.json() روی پاسخ غیر-JSON (۴۱۹ انقضای CSRF، ۵۰۰ با بدنه HTML) throw می‌کند؛
+ * اگر آن throw گرفته نشود کاربر هیچ پیامی نمی‌بیند و فکر می‌کند کار انجام شده.
+ * خروجی همیشه { ok, message, data } است.
+ */
+async function _postJson(url, fd) {
+    let res;
+    try {
+        res = await fetch(url, {
+            method: 'POST', body: fd,
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+        });
+    } catch (err) {
+        console.error('[paste] network', err);
+        return { ok: false, message: 'ارتباط با سرور برقرار نشد' };
+    }
+
+    if (res.status === 419) return { ok: false, message: 'نشست منقضی شده — صفحه را رفرش کنید' };
+
+    let data = null;
+    try { data = await res.json(); } catch (err) { /* بدنه JSON نبود */ }
+
+    if (!res.ok)  return { ok: false, message: (data && data.message) || `خطای سرور ${res.status}` };
+    if (!data)    return { ok: false, message: 'پاسخ سرور قابل خواندن نبود' };
+
+    return { ok: data.success !== false, message: data.message || '', data };
+}
+
+/** هر ورود به حالت paste باید هر دو نوع انتخاب و هایلایت‌هایشان را پاک کند */
+function _clearAllSelections() {
+    vtreeClearSelection();
+    vtreeClearFieldSelection();
+}
+
+/** هایلایت مقصدهای مجاز — sel تعیین می‌کند چه چیزی واقعاً قابل کلیک است */
+function _markTargets(sel) {
+    document.querySelectorAll(sel).forEach(n => n.classList.add('vtree-paste-target'));
+}
+
+function _unmarkTargets() {
+    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+}
+
 // ─── Drag & Drop + Multi-select ─────────────────────────────────────────────
 let _dndSource        = null;  // { kind:'palette'|'field'|'option', type?, fieldId?, optionId?, ownerFieldId? }
 let _selected         = [];    // [{ kind, id }]  — multi-select گزینه‌ها
@@ -1125,9 +1196,13 @@ function vtreeNodeClick(e, el, kind) {
     if (_pasteMode) {
         if (kind === 'field' && el.dataset.type === 'option') {
             vtreePasteHere(el);
+        } else if (kind === 'field') {
+            treeToast('❌ گزینه فقط زیر فیلدی از نوع «گزینه» می‌نشیند. این فیلد از نوع دیگری است.', false);
         } else if (kind === 'option') {
+            // فقط فرزندِ مستقیم؛ سلکتور قبلی descendant بود و می‌توانست یک نوه را
+            // به‌عنوان مقصد بردارد و paste را در عمق اشتباه بنشاند.
             const li = el.closest('li');
-            const childField = li?.querySelector(':scope > ul .vtree-node[data-type="option"]');
+            const childField = li?.querySelector(':scope > ul > li > .vtree-node[data-type="option"]');
             if (childField) {
                 vtreePasteHere(childField);
             } else {
@@ -1141,6 +1216,8 @@ function vtreeNodeClick(e, el, kind) {
     if (_fieldPasteMode) {
         if (kind === 'field') {
             vtreePasteFieldsHere(el);
+        } else {
+            treeToast('❌ مقصد باید یک فیلد باشد، نه گزینه.', false);
         }
         return;
     }
@@ -1181,11 +1258,12 @@ function vtreeCopyThisOption() {
     vtreePopoverClose();
     _clipboard  = [_vpOptId];
     _pasteMode  = true;
-    _selected   = [];
+    // _selected = [] تنها آرایه را خالی می‌کرد و کلاس‌های .vtree-selected
+    // روی گره‌ها می‌ماندند؛ شمارنده با چیزی که کاربر می‌دید نمی‌خواند.
+    _clearAllSelections();
     document.getElementById('palette-copy-section').style.display = 'none';
     document.getElementById('palette-paste-section').style.display = 'flex';
-    // هایلایت همه فیلدهای از نوع گزینه
-    document.querySelectorAll('.vtree-node[data-type="option"]').forEach(n => n.classList.add('vtree-paste-target'));
+    _markTargets('.vtree-node[data-type="option"]');
     treeToast('روی یک فیلد گزینه‌ای کلیک کنید تا گزینه آنجا paste شود');
 }
 
@@ -1239,12 +1317,12 @@ function vtreeEnterFieldPasteMode() {
             const ib = allNodes.findIndex(n => n.dataset.fieldId === b);
             return ia - ib;
         });
-    vtreeClearFieldSelection();
+    _clearAllSelections();
     _fieldPasteMode = true;
     document.getElementById('palette-field-section').style.display      = 'none';
     document.getElementById('palette-field-paste-section').style.display = 'flex';
-    // هایلایت همه فیلدها به عنوان target
-    document.querySelectorAll('.vtree-node').forEach(n => n.classList.add('vtree-paste-target'));
+    // فقط گره‌های فیلد قابل کلیک‌اند، پس فقط همان‌ها هایلایت می‌شوند
+    _markTargets('.vtree-node[data-field-id]:not([data-option-id])');
     treeToast('روی فیلد مقصد کلیک کنید تا فیلدها به عنوان زیرفیلد همیشگی paste شوند');
 }
 
@@ -1252,50 +1330,105 @@ function vtreeCancelFieldPaste() {
     _fieldPasteMode = false;
     _fieldClipboard = [];
     document.getElementById('palette-field-paste-section').style.display = 'none';
-    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+    _unmarkTargets();
 }
 
 async function vtreePasteFieldsHere(targetEl) {
     const targetFieldId = targetEl.dataset.fieldId;
     const catId         = _catId();
-    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+    _unmarkTargets();
     document.getElementById('palette-field-paste-section').style.display = 'none';
     _fieldPasteMode = false;
 
     const ids = [..._fieldClipboard];
     _fieldClipboard = [];
+
     let count = 0;
+    let firstError = '';
+    const createdIds = [];
     for (let i = 0; i < ids.length; i++) {
-        try {
-            const fd = new FormData();
-            fd.append('parent_field_id', targetFieldId);
-            fd.append('paste_index', i);   // ترتیب paste برای sort_order صحیح
-            const res = await fetch(`/admin/categories/${catId}/fields/${ids[i]}/duplicate`, {
-                method: 'POST', body: fd,
-                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
-            });
-            if (res.ok) count++;
-        } catch (err) { console.error('[field-paste]', err); }
+        const fd = new FormData();
+        fd.append('parent_field_id', targetFieldId);
+        // paste_index حذف شد: سرور خودش max(sort_order)+1 می‌گیرد و چون
+        // درخواست‌ها ترتیبی‌اند، ترتیب حفظ می‌شود.
+        const r = await _postJson(`/admin/categories/${catId}/fields/${ids[i]}/duplicate`, fd);
+        if (r.ok) {
+            count++;
+            if (r.data && r.data.field_id) createdIds.push(r.data.field_id);
+        } else if (!firstError) firstError = r.message;
     }
-    treeToast(`✅ ${count} فیلد به عنوان زیرفیلد همیشگی paste شد`);
+
+    // حتی وقتی بخشی موفق شده، همان بخش باید قابل بازگشت باشد
+    if (createdIds.length) {
+        _pushUndo({
+            type: 'paste_fields',
+            fieldIds: createdIds,
+            label: `paste ${createdIds.length} فیلد`,
+        });
+    }
+
+    // قبلاً حتی وقتی همه شکست می‌خوردند «✅ 0 فیلد paste شد» نشان داده می‌شد
+    if (count === 0) {
+        treeToast('❌ ' + (firstError || 'هیچ فیلدی paste نشد'), false);
+    } else if (count < ids.length) {
+        treeToast(`⚠️ ${count} از ${ids.length} فیلد paste شد — ${firstError}`, false);
+    } else {
+        treeToast(`✅ ${count} فیلد به عنوان زیرفیلد همیشگی paste شد`);
+    }
     await refreshTree();
+}
+
+/** شمارش گره‌های زیر یک فیلد در درخت رندرشده — برای پیام تأیید */
+function _countSubtree(fieldId) {
+    const el = document.querySelector(`.vtree-node[data-field-id="${fieldId}"]:not([data-option-id])`);
+    const li = el?.closest('li');
+    if (!li) return { fields: 1, options: 0 };
+    return {
+        fields:  li.querySelectorAll('.vtree-node[data-field-id]:not([data-option-id])').length,
+        options: li.querySelectorAll('.vtree-node[data-option-id]').length,
+    };
 }
 
 async function vtreeDeleteSelectedFields() {
     if (_selectedFields.length === 0) return;
-    if (!confirm(`آیا از حذف ${_selectedFields.length} فیلد اطمینان دارید؟`)) return;
-    const catId = _catId();
-    const ids   = _selectedFields.map(s => s.id);
-    vtreeClearFieldSelection();
+
+    const ids = _selectedFields.map(s => s.id);
+
+    // حذف بازگشتی است و undo ندارد، پس کاربر باید دقیقاً بداند چه از دست می‌رود
+    let fields = 0, options = 0;
     for (const id of ids) {
-        try {
-            await fetch(`/admin/categories/${catId}/fields/${id}`, {
-                method: 'DELETE',
-                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
-            });
-        } catch (err) { console.error('[del-field]', err); }
+        const c = _countSubtree(id);
+        fields  += c.fields;
+        options += c.options;
     }
-    treeToast(`✅ ${ids.length} فیلد حذف شد`);
+
+    const extra = fields - ids.length;
+    let msg = `${ids.length} فیلد انتخاب شده است.`;
+    if (extra > 0 || options > 0) {
+        const parts = [];
+        if (extra > 0)   parts.push(`${extra} زیرفیلد`);
+        if (options > 0) parts.push(`${options} گزینه`);
+        msg += `\nبا زیرمجموعه‌هایشان ${parts.join(' و ')} هم حذف می‌شود.`;
+    }
+    msg += '\n\nاین کار قابل بازگشت نیست. ادامه می‌دهید؟';
+
+    if (!confirm(msg)) return;
+
+    const catId = _catId();
+    vtreeClearFieldSelection();
+
+    let done = 0, firstError = '';
+    for (const id of ids) {
+        const fd = new FormData(); fd.append('_method', 'DELETE');
+        const r = await _postJson(`/admin/categories/${catId}/fields/${id}`, fd);
+        if (r.ok) done++;
+        else if (!firstError) firstError = r.message;
+    }
+
+    if (done === 0)            treeToast('❌ ' + (firstError || 'حذف انجام نشد'), false);
+    else if (done < ids.length) treeToast(`⚠️ ${done} از ${ids.length} فیلد حذف شد — ${firstError}`, false);
+    else                        treeToast(`✅ ${done} فیلد حذف شد`);
+
     await refreshTree();
 }
 
@@ -1313,11 +1446,10 @@ function _updatePaletteCopySection() {
 function vtreeCopySelected() {
     _clipboard  = _selected.map(s => s.id);
     _pasteMode  = true;
-    vtreeClearSelection();
+    _clearAllSelections();
     document.getElementById('palette-copy-section').style.display = 'none';
     document.getElementById('palette-paste-section').style.display = 'flex';
-    // هایلایت targets
-    document.querySelectorAll('.vtree-node[data-type="option"]').forEach(n => n.classList.add('vtree-paste-target'));
+    _markTargets('.vtree-node[data-type="option"]');
     treeToast('روی یک فیلد گزینه‌ای کلیک کنید تا paste شود', true);
 }
 
@@ -1325,27 +1457,38 @@ function vtreeCancelPaste() {
     _pasteMode = false;
     _clipboard = [];
     document.getElementById('palette-paste-section').style.display = 'none';
-    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+    _unmarkTargets();
 }
 
 async function vtreePasteHere(el) {
     const catId   = _catId();
     const fieldId = el.dataset.fieldId;
-    document.querySelectorAll('.vtree-paste-target').forEach(n => n.classList.remove('vtree-paste-target'));
+    _unmarkTargets();
     document.getElementById('palette-paste-section').style.display = 'none';
     _pasteMode = false;
 
     const fd = new FormData();
     _clipboard.forEach(id => fd.append('option_ids[]', id));
-
-    const res  = await fetch(`/admin/categories/${catId}/fields/${fieldId}/options/batch-copy`, {
-        method: 'POST', body: fd,
-        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-    });
-    const data = await res.json();
-    if (data.success) { treeToast('✅ ' + data.message); await refreshTree(); }
-    else treeToast('❌ ' + (data.message || 'خطا در paste'), false);
     _clipboard = [];
+
+    const r = await _postJson(`/admin/categories/${catId}/fields/${fieldId}/options/batch-copy`, fd);
+    if (r.ok) {
+        // شناسه‌های تازه را برای undo نگه می‌داریم؛ حذف سمت سرور بازگشتی است
+        // پس پاک کردن گزینه‌ی سطح‌اول کل زیردرخت کپی‌شده را با خود می‌برد.
+        const newIds = (r.data && r.data.option_ids) || [];
+        if (newIds.length) {
+            _pushUndo({
+                type: 'paste_options',
+                fieldId,
+                optionIds: newIds,
+                label: `paste ${newIds.length} گزینه`,
+            });
+        }
+        treeToast('✅ ' + (r.message || 'گزینه‌ها کپی شدند'));
+        await refreshTree();
+    } else {
+        treeToast('❌ ' + (r.message || 'خطا در paste'), false);
+    }
 }
 
 // ── Palette instant-create helpers ───────────────────────────────────────────

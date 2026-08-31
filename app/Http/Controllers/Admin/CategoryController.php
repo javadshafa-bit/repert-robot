@@ -191,7 +191,7 @@ class CategoryController extends Controller
 
     public function destroyField(Category $category, CategoryField $field)
     {
-        $field->delete();
+        $this->deleteFieldSubtree($field);
         if (request()->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد حذف شد.']);
         return back()->with('success', 'فیلد حذف شد.');
     }
@@ -227,7 +227,7 @@ class CategoryController extends Controller
 
     public function destroyOption(Category $category, CategoryField $field, FieldOption $option)
     {
-        $option->delete();
+        $this->deleteOptionSubtree($option);
         if (request()->expectsJson()) return response()->json(['success' => true, 'message' => 'گزینه حذف شد.']);
         return back()->with('success', 'گزینه حذف شد.');
     }
@@ -251,31 +251,86 @@ class CategoryController extends Controller
         return back()->with('success', 'فیلد جابجا شد.');
     }
 
-    /** کپی فیلد — فقط خود فیلد و گزینه‌هایش (بدون always-children)
+    /** کپی عمیق یک فیلد: خود فیلد، گزینه‌هایش، زیرفیلدهای هر گزینه،
+     *  و زیرفیلدهای همیشگی‌اش — تا هر عمقی.
+     *
      *  اگر parent_field_id در request باشد → کپی به عنوان always-child آن فیلد
      *  در غیر این صورت → sibling در همان سطح اصلی
      */
     public function duplicateField(Request $request, Category $category, CategoryField $field)
     {
-        $field->load('options.childFields.options.childFields');
+        // این متد تنها جای کنترلر بود که هیچ اعتبارسنجی نداشت و
+        // parent_field_id را خام (int) می‌کرد.
+        $request->validate([
+            'parent_field_id' => ['nullable', TenantRule::exists('category_fields')],
+        ], [
+            'parent_field_id.exists' => 'فیلد مقصد پیدا نشد.',
+        ]);
 
-        if ($request->filled('parent_field_id')) {
-            // paste به عنوان always-child فیلد مقصد
-            $parentFieldId  = (int) $request->parent_field_id;
-            $parentOptionId = null;
-            // sort_order بر اساس تعداد فرزندان موجود + شاخص paste
-            $baseSortOrder = CategoryField::where('parent_field_id', $parentFieldId)->max('sort_order') ?? -1;
-            $sortOrder     = $baseSortOrder + 1 + (int) $request->input('paste_index', 0);
-        } else {
-            // sibling در همان سطح
-            $parentFieldId  = $field->parent_field_id;
-            $parentOptionId = $field->parent_option_id;
-            $sortOrder      = $field->sort_order + 1;
+        if ($field->category_id !== $category->id) {
+            return $this->copyError($request, 'این فیلد به این دسته‌بندی تعلق ندارد.');
         }
 
-        $newField = $this->deepCopyField($field, $parentOptionId, $parentFieldId, $sortOrder);
+        if ($request->filled('parent_field_id')) {
+            $target = CategoryField::find((int) $request->parent_field_id);
+
+            if (!$target || $target->category_id !== $category->id) {
+                return $this->copyError($request, 'فیلد مقصد در این دسته‌بندی نیست.');
+            }
+
+            // paste داخل زیرمجموعه‌ی خودِ منبع، پیمایش کپی را بی‌پایان می‌کند:
+            // رکورد تازه زیر یک نوادهٔ منبع می‌نشیند و در ادامه‌ی همان پیمایش
+            // دوباره خوانده می‌شود. اینجا صریح جلویش گرفته می‌شود.
+            if ($target->id === $field->id || in_array($field->id, $this->ancestorIds($target)['fields'], true)) {
+                return $this->copyError($request, 'نمی‌توان یک فیلد را داخل زیرمجموعه‌ی خودش paste کرد.');
+            }
+
+            $parentFieldId  = $target->id;
+            $parentOptionId = null;
+            // paste_index حذف شد: max هر بار دوباره خوانده می‌شود، پس جمع کردن
+            // هر دو باعث می‌شد sort_orderها 0، 2، 5 شوند به‌جای 0، 1، 2.
+            $sortOrder = (CategoryField::where('parent_field_id', $parentFieldId)->max('sort_order') ?? -1) + 1;
+        } else {
+            // کپی به‌عنوان برادرِ بلافاصله بعدی: برادرهای بعدی یک واحد جابه‌جا
+            // می‌شوند تا sort_order تکراری نشود.
+            $parentFieldId  = $field->parent_field_id;
+            $parentOptionId = $field->parent_option_id;
+
+            $siblings = CategoryField::where('category_id', $field->category_id);
+            if ($field->parent_field_id)       $siblings->where('parent_field_id', $field->parent_field_id);
+            elseif ($field->parent_option_id)  $siblings->where('parent_option_id', $field->parent_option_id);
+            else $siblings->whereNull('parent_field_id')->whereNull('parent_option_id');
+
+            $siblings->where('sort_order', '>', $field->sort_order)->increment('sort_order');
+            $sortOrder = $field->sort_order + 1;
+        }
+
+        $this->copiedFieldIds = [];
+        $newField = $this->deepCopyField($field, $parentOptionId, $parentFieldId, $sortOrder, [], $category->id);
+
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد کپی شد.', 'field_id' => $newField->id]);
         return back()->with('success', 'فیلد کپی شد.');
+    }
+
+    /**
+     * شناسه‌ی فیلدهایی که در همین درخواستِ کپی ساخته شده‌اند.
+     *
+     * snapshot گرفتن از فرزندان پیش از insert کافی نیست: وقتی مقصد داخل
+     * زیرمجموعه‌ی منبع باشد، رکورد تازه پیش از رسیدنِ پیمایش به آن گره،
+     * فرزندِ همان گره شده است و در snapshot خودش دیده می‌شود. این مجموعه
+     * تضمین می‌کند هیچ رکوردِ تازه‌ای دوباره کپی نشود.
+     *
+     * @var array<int,bool>
+     */
+    private array $copiedFieldIds = [];
+
+    /** پاسخ خطای یکدست برای عملیات کپی (کلاینت پیام را از data.message می‌خواند) */
+    private function copyError(Request $request, string $message)
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], 422);
+        }
+        return back()->with('error', $message);
     }
 
     /** جابجایی یک گزینه زیر field دیگر */
@@ -297,33 +352,81 @@ class CategoryController extends Controller
             'option_ids.*' => [TenantRule::exists('field_options')],
         ]);
 
-        $sources = FieldOption::with('childFields.options.childFields.options.childFields')
-            ->whereIn('id', $request->option_ids)->get();
-
-        foreach ($sources as $opt) {
-            $this->deepCopyOption($opt, $fieldTarget->id);
+        if ($fieldTarget->category_id !== $category->id) {
+            return $this->copyError($request, 'فیلد مقصد در این دسته‌بندی نیست.');
         }
 
-        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => count($sources) . ' گزینه کپی شد.']);
+        // گزینه فقط زیر فیلدی از نوع «گزینه» معنا دارد؛ UI جلویش را می‌گرفت ولی API نه.
+        if ($fieldTarget->type !== 'option') {
+            return $this->copyError($request, 'مقصد باید فیلدی از نوع «گزینه» باشد.');
+        }
+
+        $sources = FieldOption::whereIn('id', $request->option_ids)->get();
+
+        // paste داخل زیرمجموعه‌ی خودِ گزینه‌ی منبع، پیمایش کپی را بی‌پایان می‌کند
+        $ancestorOptions = $this->ancestorIds($fieldTarget)['options'];
+        foreach ($sources as $opt) {
+            if (in_array($opt->id, $ancestorOptions, true)) {
+                return $this->copyError($request, 'نمی‌توان یک گزینه را داخل زیرمجموعه‌ی خودش paste کرد.');
+            }
+        }
+
+        $this->copiedFieldIds = [];
+        $createdIds = [];
+        foreach ($sources as $opt) {
+            $createdIds[] = $this->deepCopyOption($opt, $fieldTarget->id, [], $fieldTarget->category_id)->id;
+        }
+
+        if ($request->expectsJson()) return response()->json([
+            'success'    => true,
+            'message'    => count($sources) . ' گزینه کپی شد.',
+            'option_ids' => $createdIds,   // برای undo لازم است
+        ]);
         return back()->with('success', 'گزینه‌ها کپی شدند.');
     }
 
-    private function deepCopyOption(FieldOption $opt, int $newFieldId): void
+    /**
+     * @param array<int,bool> $seen شناسه‌ی فیلدهای مسیر جاری، برای جلوگیری از حلقه
+     * @param int|null $categoryId دسته‌ی مقصد؛ اگر null باشد دسته‌ی منبع استفاده می‌شود
+     */
+    private function deepCopyOption(FieldOption $opt, int $newFieldId, array $seen = [], ?int $categoryId = null): FieldOption
     {
+        // فرزندان را پیش از هر درجی می‌خوانیم — به دلیلی که در deepCopyField آمده
+        $sourceChildren = $opt->childFields()->orderBy('sort_order')->get();
+
         $newOpt = FieldOption::create([
             'field_id'   => $newFieldId,
             'label'      => $opt->label,
-            'sort_order' => FieldOption::where('field_id', $newFieldId)->count(),
+            // count() وقتی sort_orderها پیوسته نباشند (۰،۱،۵) مقدار تکراری می‌داد
+            'sort_order' => (FieldOption::where('field_id', $newFieldId)->max('sort_order') ?? -1) + 1,
         ]);
-        foreach ($opt->childFields as $cf) {
-            $this->deepCopyField($cf, $newOpt->id, null);
+
+        foreach ($sourceChildren as $cf) {
+            if (isset($seen[$cf->id]) || isset($this->copiedFieldIds[$cf->id])) continue;
+            $this->deepCopyField($cf, $newOpt->id, null, $cf->sort_order, $seen, $categoryId);
         }
+
+        return $newOpt;
     }
 
-    private function deepCopyField(CategoryField $f, ?int $parentOptId, ?int $parentFieldId = null, ?int $sortOrder = null): CategoryField
+    /**
+     * @param array<int,bool> $seen شناسه‌ی فیلدهای مسیر جاری.
+     *        parent_field_id و parent_option_id در دیتابیس FK ندارند، پس یک حلقه
+     *        (فیلدی که جد خودش شود) از نظر ساختاری ممکن است و بدون این محافظ
+     *        کپی تا سقف حافظه پیش می‌رفت.
+     */
+    private function deepCopyField(CategoryField $f, ?int $parentOptId, ?int $parentFieldId = null, ?int $sortOrder = null, array $seen = [], ?int $categoryId = null): CategoryField
     {
+        $seen[$f->id] = true;
+
+        // فرزندان *پیش از* درج خوانده می‌شوند. اگر بعد از insert لود شوند،
+        // رکوردهای تازه‌ساخته می‌توانند وارد همین پیمایش شوند (وقتی مقصد داخل
+        // زیرمجموعه‌ی منبع باشد) و چون شناسه‌شان در $seen نیست، کپی بی‌پایان می‌شود.
+        $sourceOptions = $f->options()->orderBy('sort_order')->get();
+        $sourceAlways  = $f->alwaysChildFields()->orderBy('sort_order')->get();
+
         $nf = CategoryField::create([
-            'category_id'      => $f->category_id,
+            'category_id'      => $categoryId ?? $f->category_id,
             'parent_option_id' => $parentOptId,
             'parent_field_id'  => $parentFieldId,
             'label'            => $f->label,
@@ -331,16 +434,116 @@ class CategoryController extends Controller
             'type'             => $f->type,
             'is_required'      => $f->is_required,
             'is_multiple'      => $f->is_multiple,
+            'date_range'       => $f->date_range,
             'sort_order'       => $sortOrder ?? ($f->sort_order + 1),
         ]);
-        foreach ($f->options as $opt) {
-            $this->deepCopyOption($opt, $nf->id);
+
+        $this->copiedFieldIds[$nf->id] = true;
+
+        foreach ($sourceOptions as $opt) {
+            $this->deepCopyOption($opt, $nf->id, $seen, $nf->category_id);
         }
-        if ($f->relationLoaded('alwaysChildFields')) {
-            foreach ($f->alwaysChildFields as $child) {
-                $this->deepCopyField($child, null, $nf->id);
-            }
+
+        // زیرفیلدهای همیشگی هم بخشی از همین زیردرخت‌اند و باید همراه کپی شوند.
+        // پیش‌تر این حلقه پشت relationLoaded() بود و چون هیچ‌کدام از نقاط شروع
+        // این رابطه را eager load نمی‌کردند، عملاً هیچ‌وقت اجرا نمی‌شد.
+        foreach ($sourceAlways as $child) {
+            if (isset($seen[$child->id]) || isset($this->copiedFieldIds[$child->id])) continue;
+            $this->deepCopyField($child, null, $nf->id, $child->sort_order, $seen, $nf->category_id);
         }
+
         return $nf;
+    }
+
+    // ==========================================
+    // Recursive delete
+    // ==========================================
+
+    /**
+     * حذف یک فیلد به همراه کل زیردرختش.
+     *
+     * `field_options.field_id` در دیتابیس cascade دارد، پس گزینه‌های خود فیلد
+     * خودکار پاک می‌شوند — ولی `parent_option_id` و `parent_field_id` هیچ FK
+     * ندارند. یعنی حذف ساده‌ی `$field->delete()` فیلدهای زیر گزینه‌هایش و
+     * زیرفیلدهای همیشگی‌اش را یتیم می‌گذاشت: رکوردهایی که چون لیست ریشه با
+     * whereNull(parent_*) فیلتر می‌شود دیگر هیچ‌جا رندر نمی‌شدند و برای همیشه
+     * در جدول می‌ماندند.
+     *
+     * @param array<int,bool> $seen محافظ حلقه (parent_field_id بدون FK)
+     */
+    private function deleteFieldSubtree(CategoryField $field, array $seen = []): int
+    {
+        $seen[$field->id] = true;
+        $count = 1;
+
+        foreach ($field->options as $opt) {
+            $count += $this->deleteOptionSubtree($opt, $seen, false);
+        }
+
+        foreach ($field->alwaysChildFields as $child) {
+            if (isset($seen[$child->id])) continue;
+            $count += $this->deleteFieldSubtree($child, $seen);
+        }
+
+        $field->delete();   // cascade خودِ گزینه‌ها را می‌برد
+
+        return $count;
+    }
+
+    /**
+     * حذف یک گزینه به همراه فیلدهای زیرش.
+     *
+     * @param bool $deleteSelf وقتی از deleteFieldSubtree صدا زده می‌شود false است،
+     *        چون cascade خودِ گزینه را پاک می‌کند و delete دوباره بی‌فایده است.
+     */
+    private function deleteOptionSubtree(FieldOption $option, array $seen = [], bool $deleteSelf = true): int
+    {
+        $count = 1;
+
+        foreach ($option->childFields as $cf) {
+            if (isset($seen[$cf->id])) continue;
+            $count += $this->deleteFieldSubtree($cf, $seen);
+        }
+
+        if ($deleteSelf) $option->delete();
+
+        return $count;
+    }
+
+    /**
+     * زنجیره‌ی اجداد یک فیلد، رو به بالا.
+     *
+     * والدِ یک فیلد یا فیلد دیگری است (parent_field_id) یا یک گزینه
+     * (parent_option_id) که خودش زیر یک فیلد نشسته. خروجی:
+     *   ['fields' => [id...], 'options' => [id...]]
+     *
+     * @return array{fields: int[], options: int[]}
+     */
+    private function ancestorIds(CategoryField $field): array
+    {
+        $fields  = [];
+        $options = [];
+        $current = $field;
+        $guard   = 0;
+
+        // guard: parent_field_id هیچ FK ندارد، پس حلقه ساختاراً ممکن است
+        while ($current && $guard++ < 100) {
+            if ($current->parent_field_id) {
+                $current = CategoryField::find($current->parent_field_id);
+            } elseif ($current->parent_option_id) {
+                $opt = FieldOption::find($current->parent_option_id);
+                if (!$opt) break;
+                $options[] = $opt->id;
+                $current   = CategoryField::find($opt->field_id);
+            } else {
+                break;
+            }
+
+            if (!$current) break;
+            if (in_array($current->id, $fields, true)) break;   // حلقه
+            $fields[] = $current->id;
+        }
+
+        return ['fields' => $fields, 'options' => $options];
     }
 }
