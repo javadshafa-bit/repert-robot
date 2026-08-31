@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Category;
 use App\Models\CategoryField;
 use App\Models\FieldOption;
+use App\Models\Report;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -118,10 +119,52 @@ class PurgeOrphanFields extends Command
             if ($v) $this->line(sprintf('   %-24s %d', $k, $v));
         }
 
-        // ── نمونه‌ها ───────────────────────────────────────────────────────
-        $catNames = Category::whereIn('id', $orphans->pluck('category_id')->unique())
+        // ── کدام یتیم‌ها زمانی در گزارشی استفاده شده‌اند؟ ───────────────────
+        // محتوای گزارش در همان رکورد گزارش snapshot می‌شود (label/type/value)،
+        // پس حذف فیلد نمایش گزارش‌های قدیمی را خراب نمی‌کند. تنها پیامدش این
+        // است که دیگر نمی‌شود آرشیو را روی آن فیلد فیلتر کرد.
+        $usedFieldIds = $this->fieldIdsUsedInReports();
+        $orphanIds    = $orphans->pluck('id')->all();
+        $usedOrphans  = array_values(array_intersect($orphanIds, $usedFieldIds));
+
+        $catNames = Category::whereIn('id', $fields->pluck('category_id')->unique())
             ->pluck('name', 'id');
 
+        // ── تفکیک به‌ازای دسته‌بندی ─────────────────────────────────────────
+        $this->newLine();
+        $this->line('تفکیک به‌ازای دسته‌بندی:');
+
+        $rows = $orphans->groupBy('category_id')
+            ->map(function ($group, $catId) use ($fields, $catNames, $usedFieldIds) {
+                $total    = $fields->where('category_id', $catId)->count();
+                $usedHere = count(array_intersect($group->pluck('id')->all(), $usedFieldIds));
+                return [
+                    'name'    => $catNames[$catId] ?? ('#' . $catId),
+                    'total'   => $total,
+                    'orphans' => $group->count(),
+                    'pct'     => $total ? round($group->count() * 100 / $total) . '٪' : '—',
+                    'used'    => $usedHere ?: '—',
+                ];
+            })
+            ->sortByDesc('orphans')
+            ->values();
+
+        $this->table(
+            ['دسته‌بندی', 'کل فیلدها', 'یتیم', 'نسبت', 'در گزارش استفاده شده'],
+            $rows->map(fn ($r) => [$r['name'], $r['total'], $r['orphans'], $r['pct'], $r['used']])->all()
+        );
+
+        if ($usedOrphans) {
+            $this->warn(count($usedOrphans) . ' فیلد یتیم زمانی در گزارشی استفاده شده‌اند.');
+            $this->line('   محتوای آن گزارش‌ها سالم می‌ماند (در خود رکورد گزارش ذخیره شده).');
+            $this->line('   فقط دیگر نمی‌توانی آرشیو را روی این فیلدها فیلتر کنی.');
+            $this->line('   شناسه‌ها: ' . implode(', ', array_slice($usedOrphans, 0, 30))
+                . (count($usedOrphans) > 30 ? ' …' : ''));
+        } else {
+            $this->info('هیچ‌کدام از این یتیم‌ها در هیچ گزارشی استفاده نشده‌اند.');
+        }
+
+        // ── نمونه‌ها ───────────────────────────────────────────────────────
         $this->newLine();
         $this->line('نمونه (حداکثر ۲۰ مورد):');
         $this->table(
@@ -166,5 +209,39 @@ class PurgeOrphanFields extends Command
         $this->line('دوباره بدون --force اجرا کن تا مطمئن شوی چیزی نمانده.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * شناسه‌ی هر فیلدی که در دست‌کم یک گزارش ثبت‌شده آمده است.
+     *
+     * دو فرمت در جدول reports وجود دارد:
+     *   جدید: [{field_id, label, type, value}, ...]
+     *   قدیم: {field_id: value, ...}
+     *
+     * @return int[]
+     */
+    private function fieldIdsUsedInReports(): array
+    {
+        $used = [];
+
+        Report::query()->select(['id', 'data'])->cursor()->each(function ($r) use (&$used) {
+            $data = is_array($r->data) ? $r->data : [];
+            if (!$data) return;
+
+            if (!isset($data[0])) {                       // فرمت قدیم: کلید = شناسه فیلد
+                foreach (array_keys($data) as $k) {
+                    if (is_numeric($k)) $used[(int) $k] = true;
+                }
+                return;
+            }
+
+            foreach ($data as $item) {
+                if (is_array($item) && isset($item['field_id'])) {
+                    $used[(int) $item['field_id']] = true;
+                }
+            }
+        });
+
+        return array_keys($used);
     }
 }
