@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\CategoryField;
 use App\Models\FieldOption;
 use App\Models\Report;
+use App\Support\FieldTree;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -60,35 +61,12 @@ class PurgeOrphanFields extends Command
             ->whereIn('field_id', $fields->pluck('id'))
             ->get(['id', 'field_id']);
 
-        $byId            = $fields->keyBy('id');
-        $optionsByField  = $options->groupBy('field_id');
-        $optionExists    = $options->keyBy('id');
-        $childrenByOpt   = $fields->whereNotNull('parent_option_id')->groupBy('parent_option_id');
-        $childrenByField = $fields->whereNotNull('parent_field_id')->groupBy('parent_field_id');
+        $byId         = $fields->keyBy('id');
+        $optionExists = $options->keyBy('id');
 
-        // ── پیمایش رو به پایین از فیلدهای سطح اول ──────────────────────────
-        $stack = $fields
-            ->filter(fn ($f) => is_null($f->parent_option_id) && is_null($f->parent_field_id))
-            ->pluck('id')
-            ->all();
-
-        $reachable = [];
-        while ($stack) {
-            $id = array_pop($stack);
-            if (isset($reachable[$id])) continue;      // محافظ حلقه
-            $reachable[$id] = true;
-
-            foreach ($optionsByField[$id] ?? [] as $opt) {
-                foreach ($childrenByOpt[$opt->id] ?? [] as $cf) {
-                    $stack[] = $cf->id;
-                }
-            }
-            foreach ($childrenByField[$id] ?? [] as $cf) {
-                $stack[] = $cf->id;
-            }
-        }
-
-        $orphans = $fields->reject(fn ($f) => isset($reachable[$f->id]))->values();
+        // همان پیمایشی که صفحه‌ی فرم‌ساز هم برای هشدارش استفاده می‌کند
+        $reachable = FieldTree::reachableMap($fields, $options);
+        $orphans   = $fields->reject(fn ($f) => isset($reachable[$f->id]))->values();
 
         $this->newLine();
         $this->line('کل فیلدها:        ' . $fields->count());

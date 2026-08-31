@@ -25,7 +25,7 @@
                 ⊡ Fit
             </button>
         </div>
-        <span class="text-xs text-gray-400">کلیک=ویرایش | Ctrl+کلیک=انتخاب | درگ=جابجایی</span>
+        <span class="text-xs text-gray-400">کلیک=ویرایش | Ctrl+کلیک=انتخاب | درگ=زیرمجموعه کردن | ترتیب: از پنجره ویرایش</span>
     </div>
     {{-- Palette داخل header --}}
     <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">

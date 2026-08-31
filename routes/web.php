@@ -142,6 +142,7 @@ Route::middleware(['admin.auth', 'tenant'])->prefix('admin')->name('admin.')->gr
         Route::patch('categories/{category}/fields/{field}/options/{option}/reparent',     [CategoryController::class, 'reparentOption'])->name('categories.fields.options.reparent');
         Route::post('categories/{category}/fields/{fieldTarget}/options/batch-copy',       [CategoryController::class, 'batchCopyOptions'])->name('categories.fields.options.batch-copy');
         Route::post('categories/{category}/fields/{field}/duplicate',                      [CategoryController::class, 'duplicateField'])->name('categories.fields.duplicate');
+        Route::post('categories/{category}/fields/{field}/move',                           [CategoryController::class, 'moveField'])->name('categories.fields.move');
     });
 
     // دپارتمان‌ها

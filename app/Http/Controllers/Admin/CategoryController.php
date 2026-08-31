@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\CategoryField;
 use App\Models\FieldOption;
+use App\Support\FieldTree;
 use App\Support\TenantRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -49,7 +50,25 @@ class CategoryController extends Controller
               ->orderBy('sort_order')
               ->with($this->fieldEagerLoad());
         }]);
-        return view('admin.categories.edit', compact('category'));
+
+        // اگر فیلدی از درخت جدا افتاده باشد، صفحه باید بگوید — نه اینکه بی‌صدا
+        // خالی نشان بدهد. یک حلقه‌ی ناخواسته می‌تواند کل فرم را نامرئی کند.
+        $detachedCount = $this->detachedFieldCount($category);
+
+        return view('admin.categories.edit', compact('category', 'detachedCount'));
+    }
+
+    /** تعداد فیلدهای این دسته‌بندی که از ریشه قابل دسترس نیستند */
+    private function detachedFieldCount(Category $category): int
+    {
+        $fields = CategoryField::where('category_id', $category->id)
+            ->get(['id', 'parent_option_id', 'parent_field_id']);
+
+        if ($fields->isEmpty()) return 0;
+
+        $options = FieldOption::whereIn('field_id', $fields->pluck('id'))->get(['id', 'field_id']);
+
+        return FieldTree::unreachable($fields, $options)->count();
     }
 
     private function fieldEagerLoad(): array
@@ -243,12 +262,79 @@ class CategoryController extends Controller
             'parent_option_id' => ['nullable', TenantRule::exists('field_options')],
             'parent_field_id'  => ['nullable', TenantRule::exists('category_fields')],
         ]);
+
+        $newParentFieldId  = $request->parent_field_id  ?: null;
+        $newParentOptionId = $request->parent_option_id ?: null;
+
+        // فیلدِ مقصد را پیدا کن — چه مستقیم، چه از راه صاحبِ گزینه
+        $targetField = null;
+        if ($newParentFieldId) {
+            $targetField = CategoryField::find($newParentFieldId);
+        } elseif ($newParentOptionId) {
+            $opt         = FieldOption::find($newParentOptionId);
+            $targetField = $opt ? CategoryField::find($opt->field_id) : null;
+        }
+
+        // بردن یک فیلد زیر خودش یا زیر نوادهٔ خودش یک حلقه می‌سازد: زنجیره‌ی
+        // والد هرگز به ریشه نمی‌رسد، پس کل آن زیردرخت از صفحه ناپدید می‌شود
+        // بدون اینکه چیزی حذف شده باشد. (۹ شهریور ۱۴۰۵ دقیقاً همین اتفاق افتاد.)
+        if ($targetField) {
+            if ($targetField->id === $field->id
+                || in_array($field->id, $this->ancestorIds($targetField)['fields'], true)) {
+                return $this->treeError($request, 'نمی‌توان یک فیلد را زیر خودش یا زیر زیرمجموعه‌اش برد.');
+            }
+        }
+
         $field->update([
-            'parent_option_id' => $request->parent_option_id ?: null,
-            'parent_field_id'  => $request->parent_field_id  ?: null,
+            'parent_option_id' => $newParentOptionId,
+            'parent_field_id'  => $newParentFieldId,
         ]);
+
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'فیلد جابجا شد.']);
         return back()->with('success', 'فیلد جابجا شد.');
+    }
+
+    /**
+     * جابه‌جایی یک فیلد بین برادرهایش (بالا/پایین) — بدون تغییر والد.
+     *
+     * درگ در درخت فقط «زیرمجموعه کردن» است؛ برای عوض کردن *ترتیب* راهی
+     * وجود نداشت و کاربر ناچار درگ می‌کرد که نتیجه‌اش تودرتو شدن بود.
+     */
+    public function moveField(Request $request, Category $category, CategoryField $field)
+    {
+        $request->validate(['direction' => 'required|string|in:up,down']);
+
+        if ($field->category_id !== $category->id) {
+            return $this->treeError($request, 'این فیلد به این دسته‌بندی تعلق ندارد.');
+        }
+
+        $q = CategoryField::where('category_id', $field->category_id);
+        if ($field->parent_field_id)       $q->where('parent_field_id', $field->parent_field_id);
+        elseif ($field->parent_option_id)  $q->where('parent_option_id', $field->parent_option_id);
+        else $q->whereNull('parent_field_id')->whereNull('parent_option_id');
+
+        $ordered = $q->orderBy('sort_order')->orderBy('id')->get();
+        $idx     = $ordered->search(fn ($f) => $f->id === $field->id);
+
+        if ($idx === false) {
+            return $this->treeError($request, 'فیلد در سطح خودش پیدا نشد.');
+        }
+
+        $swap = $request->direction === 'up' ? $idx - 1 : $idx + 1;
+        if ($swap < 0 || $swap >= $ordered->count()) {
+            return $this->treeError($request, 'این فیلد همین حالا در ابتدا/انتهای سطح خودش است.');
+        }
+
+        // کل گروه از نو شماره‌گذاری می‌شود؛ اینطور sort_orderهای تکراری یا
+        // ناپیوسته‌ی قدیمی هم همان‌جا مرتب می‌شوند.
+        $ids = $ordered->pluck('id')->all();
+        [$ids[$idx], $ids[$swap]] = [$ids[$swap], $ids[$idx]];
+        foreach ($ids as $i => $id) {
+            CategoryField::where('id', $id)->update(['sort_order' => $i]);
+        }
+
+        if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'ترتیب عوض شد.']);
+        return back()->with('success', 'ترتیب عوض شد.');
     }
 
     /** کپی عمیق یک فیلد: خود فیلد، گزینه‌هایش، زیرفیلدهای هر گزینه،
@@ -268,21 +354,21 @@ class CategoryController extends Controller
         ]);
 
         if ($field->category_id !== $category->id) {
-            return $this->copyError($request, 'این فیلد به این دسته‌بندی تعلق ندارد.');
+            return $this->treeError($request, 'این فیلد به این دسته‌بندی تعلق ندارد.');
         }
 
         if ($request->filled('parent_field_id')) {
             $target = CategoryField::find((int) $request->parent_field_id);
 
             if (!$target || $target->category_id !== $category->id) {
-                return $this->copyError($request, 'فیلد مقصد در این دسته‌بندی نیست.');
+                return $this->treeError($request, 'فیلد مقصد در این دسته‌بندی نیست.');
             }
 
             // paste داخل زیرمجموعه‌ی خودِ منبع، پیمایش کپی را بی‌پایان می‌کند:
             // رکورد تازه زیر یک نوادهٔ منبع می‌نشیند و در ادامه‌ی همان پیمایش
             // دوباره خوانده می‌شود. اینجا صریح جلویش گرفته می‌شود.
             if ($target->id === $field->id || in_array($field->id, $this->ancestorIds($target)['fields'], true)) {
-                return $this->copyError($request, 'نمی‌توان یک فیلد را داخل زیرمجموعه‌ی خودش paste کرد.');
+                return $this->treeError($request, 'نمی‌توان یک فیلد را داخل زیرمجموعه‌ی خودش paste کرد.');
             }
 
             $parentFieldId  = $target->id;
@@ -324,8 +410,8 @@ class CategoryController extends Controller
      */
     private array $copiedFieldIds = [];
 
-    /** پاسخ خطای یکدست برای عملیات کپی (کلاینت پیام را از data.message می‌خواند) */
-    private function copyError(Request $request, string $message)
+    /** پاسخ خطای یکدست برای عملیات درخت (کلاینت پیام را از data.message می‌خواند) */
+    private function treeError(Request $request, string $message)
     {
         if ($request->expectsJson()) {
             return response()->json(['success' => false, 'message' => $message], 422);
@@ -339,6 +425,14 @@ class CategoryController extends Controller
         $request->validate([
             'field_id' => ['required', TenantRule::exists('category_fields')],
         ]);
+
+        // همان منطق حلقه، از سمت گزینه: بردن گزینه زیر فیلدی که خودش داخل
+        // زیرمجموعه‌ی همان گزینه است، زنجیره را می‌بندد.
+        $targetField = CategoryField::find((int) $request->field_id);
+        if ($targetField && in_array($option->id, $this->ancestorIds($targetField)['options'], true)) {
+            return $this->treeError($request, 'نمی‌توان یک گزینه را زیر زیرمجموعه‌ی خودش برد.');
+        }
+
         $option->update(['field_id' => $request->field_id]);
         if ($request->expectsJson()) return response()->json(['success' => true, 'message' => 'گزینه جابجا شد.']);
         return back()->with('success', 'گزینه جابجا شد.');
@@ -353,12 +447,12 @@ class CategoryController extends Controller
         ]);
 
         if ($fieldTarget->category_id !== $category->id) {
-            return $this->copyError($request, 'فیلد مقصد در این دسته‌بندی نیست.');
+            return $this->treeError($request, 'فیلد مقصد در این دسته‌بندی نیست.');
         }
 
         // گزینه فقط زیر فیلدی از نوع «گزینه» معنا دارد؛ UI جلویش را می‌گرفت ولی API نه.
         if ($fieldTarget->type !== 'option') {
-            return $this->copyError($request, 'مقصد باید فیلدی از نوع «گزینه» باشد.');
+            return $this->treeError($request, 'مقصد باید فیلدی از نوع «گزینه» باشد.');
         }
 
         $sources = FieldOption::whereIn('id', $request->option_ids)->get();
@@ -367,7 +461,7 @@ class CategoryController extends Controller
         $ancestorOptions = $this->ancestorIds($fieldTarget)['options'];
         foreach ($sources as $opt) {
             if (in_array($opt->id, $ancestorOptions, true)) {
-                return $this->copyError($request, 'نمی‌توان یک گزینه را داخل زیرمجموعه‌ی خودش paste کرد.');
+                return $this->treeError($request, 'نمی‌توان یک گزینه را داخل زیرمجموعه‌ی خودش paste کرد.');
             }
         }
 

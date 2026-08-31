@@ -39,6 +39,22 @@
         </div>
 
         {{-- راهنما --}}
+        @if(($detachedCount ?? 0) > 0)
+            <div class="rounded-xl border border-amber-300 bg-amber-50 p-4">
+                <p class="text-sm font-semibold text-amber-900 mb-1">
+                    ⚠️ {{ $detachedCount }} فیلد از درخت جدا افتاده‌اند
+                </p>
+                <p class="text-xs text-amber-800 leading-6">
+                    این فیلدها در دیتابیس هستند ولی از هیچ فیلد سطح‌اولی به آن‌ها نمی‌رسیم،
+                    پس نه اینجا دیده می‌شوند و نه ربات سراغشان می‌رود. معمولاً بازمانده‌ی
+                    حذف یا جابه‌جایی قدیمی‌اند.
+                </p>
+                <p class="text-xs text-amber-800 mt-1">
+                    برای دیدن فهرست: <code class="px-1 rounded bg-white/70" dir="ltr">php artisan fields:purge-orphans</code>
+                </p>
+            </div>
+        @endif
+
         <div class="bg-white border rounded-xl shadow-sm p-4">
             <h4 class="text-sm font-semibold mb-3 text-gray-700">راهنمای انواع فیلد</h4>
             <div class="space-y-2 text-xs text-gray-600">
@@ -191,6 +207,19 @@
                     <option value="link">لینک</option>
                     <option value="date">تاریخ (تقویم)</option>
                 </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">ترتیب در همین سطح</label>
+                <div style="display:flex;gap:.4rem">
+                    <button type="button" onclick="vtreeMoveField('up')"
+                            style="flex:1;padding:.35rem;font-size:.75rem;border:1px solid #d1d5db;border-radius:.5rem;background:#fff;cursor:pointer">
+                        ↑ بالاتر
+                    </button>
+                    <button type="button" onclick="vtreeMoveField('down')"
+                            style="flex:1;padding:.35rem;font-size:.75rem;border:1px solid #d1d5db;border-radius:.5rem;background:#fff;cursor:pointer">
+                        ↓ پایین‌تر
+                    </button>
+                </div>
             </div>
             <div id="vp-f-range-wrap" class="hidden">
                 <label class="block text-xs font-medium text-gray-500 mb-1">محدوده تاریخ</label>
@@ -711,6 +740,13 @@ async function vtreeUndo() {
             ok = allOk;
         }
 
+        else if (action.type === 'move_field') {
+            const fd = new FormData();
+            fd.append('direction', action.direction);
+            const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/move`, 'POST', fd);
+            ok = d.success;
+        }
+
         else if (action.type === 'reparent_field') {
             const d = await doFetch(`/admin/categories/${catId}/fields/${action.fieldId}/reparent`, 'PATCH',
                 { parent_option_id: action.oldParentOptionId ?? null, parent_field_id: action.oldParentFieldId ?? null }, true);
@@ -1066,6 +1102,32 @@ async function vtreeSubmitField() {
         _pushUndo({ type: 'edit_field', fieldId: _vpFieldId, old: oldData, label: `ویرایش فیلد "${oldData.label}"` });
         vtreePopoverClose(); treeToast('✅ ' + data.message); await refreshTree();
     } else treeToast('❌ ' + (data.message || 'خطا'), false);
+}
+
+/**
+ * جابه‌جایی فیلد بین برادرهایش. درگ فقط «زیرمجموعه کردن» است، پس تغییر
+ * ترتیب راه جداگانه‌ای لازم داشت — نبودنش باعث شد کاربر درگ کند و
+ * ناخواسته ساختار را تودرتو (و بعد حلقه‌دار) کند.
+ */
+async function vtreeMoveField(direction) {
+    if (!_vpFieldId) return;
+    const catId = _catId();
+    const fd = new FormData();
+    fd.append('direction', direction);
+
+    const r = await _postJson(`/admin/categories/${catId}/fields/${_vpFieldId}/move`, fd);
+    if (!r.ok) { treeToast('❌ ' + (r.message || 'خطا در جابه‌جایی'), false); return; }
+
+    _pushUndo({
+        type: 'move_field',
+        fieldId: _vpFieldId,
+        direction: direction === 'up' ? 'down' : 'up',
+        label: 'تغییر ترتیب فیلد',
+    });
+
+    treeToast(direction === 'up' ? '✅ یک پله بالاتر رفت' : '✅ یک پله پایین‌تر رفت');
+    vtreePopoverClose();
+    await refreshTree();
 }
 
 async function vtreeDeleteField() {
@@ -1624,13 +1686,36 @@ function _dropOk(el) {
     if (_dndSource.kind === 'field') {
         // field → روی option (جابجایی) یا روی field دیگر (تبدیل به always-child)
         const notSelf = el.dataset.fieldId !== _dndSource.fieldId;
-        return notSelf && (isOption || isField);
+        // و هرگز روی نوادهٔ خودش: حلقه می‌سازد و کل زیردرخت را نامرئی می‌کند
+        return notSelf && (isOption || isField) && !_isInsideDraggedSubtree(el);
     }
     if (_dndSource.kind === 'option') {
-        // option → فقط روی field (type=option) دیگر
-        return isField && fType === 'option' && el.dataset.fieldId !== _dndSource.ownerFieldId;
+        // option → فقط روی field (type=option) دیگر، و نه داخل زیرمجموعه‌ی خودش
+        return isField && fType === 'option'
+            && el.dataset.fieldId !== _dndSource.ownerFieldId
+            && !_isInsideDraggedSubtree(el);
     }
     return false;
+}
+
+/**
+ * آیا گره‌ی مقصد داخل زیردرختِ همان چیزی است که داریم درگ می‌کنیم؟
+ *
+ * درخت در DOM تودرتو رندر می‌شود، پس کافی است از مقصد رو به بالا برویم و
+ * ببینیم به li خودِ منبع می‌رسیم یا نه — بدون هیچ رفت‌وبرگشتی با سرور.
+ */
+function _isInsideDraggedSubtree(el) {
+    if (!_dndSource) return false;
+
+    const srcSel = _dndSource.kind === 'field'
+        ? `.vtree-node[data-field-id="${_dndSource.fieldId}"]:not([data-option-id])`
+        : `.vtree-node[data-option-id="${_dndSource.optionId}"]`;
+
+    const srcNode = document.querySelector(srcSel);
+    const srcLi   = srcNode?.closest('li');
+    if (!srcLi) return false;
+
+    return srcLi.contains(el) && el !== srcNode;
 }
 
 // ── Drop
