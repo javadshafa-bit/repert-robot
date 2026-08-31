@@ -38,10 +38,11 @@ class PurgeOrphanFields extends Command
 
     public function handle(): int
     {
-        return TenantContext::withoutScope(fn () => $this->run());
+        return TenantContext::withoutScope(fn () => $this->purge());
     }
 
-    private function run(): int
+    /** نام run() رزرو شده است (public در Illuminate\Console\Command) — از آن استفاده نکن */
+    private function purge(): int
     {
         $categoryFilter = $this->option('category');
 
