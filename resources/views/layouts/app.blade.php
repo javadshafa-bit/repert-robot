@@ -174,6 +174,10 @@
                             <a class="w-full flex items-center gap-x-2 py-2 px-2.5 text-sm text-sidebar-2-nav-foreground rounded-lg hover:bg-sidebar-2-nav-hover focus:outline-hidden {{ request()->routeIs('admin.settings.*') ? 'bg-sidebar-2-nav-active font-bold' : '' }}"
                                href="{{ route('admin.settings.index') }}">تنظیمات ربات</a>
                         </li>
+                        <li>
+                            <a class="w-full flex items-center gap-x-2 py-2 px-2.5 text-sm text-sidebar-2-nav-foreground rounded-lg hover:bg-sidebar-2-nav-hover focus:outline-hidden {{ request()->routeIs('admin.bot-texts.*') ? 'bg-sidebar-2-nav-active font-bold' : '' }}"
+                               href="{{ route('admin.bot-texts.index') }}">متن‌های ربات</a>
+                        </li>
                         @endif
                     </ul>
                 </div>

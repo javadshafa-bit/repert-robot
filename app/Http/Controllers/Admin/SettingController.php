@@ -31,8 +31,6 @@ class SettingController extends Controller
             'bot_connected'   => $tenant->bot_connected_at ? '1' : '0',
             'bot_username'    => $tenant->bot_username,
             'webhook_url'     => $tenant->webhookUrl(),
-            'welcome_message' => Setting::get('welcome_message', 'به ربات گزارش‌دهی خوش آمدید.'),
-            'error_message'   => Setting::get('error_message', 'شما مجاز به استفاده از این ربات نیستید.'),
             'require_representative_phone' => Setting::get('require_representative_phone', '1'),
         ];
 
@@ -42,8 +40,6 @@ class SettingController extends Controller
     public function update(Request $request)
     {
         $request->validate([
-            'welcome_message' => 'required|string',
-            'error_message'   => 'required|string',
             'bot_token'       => 'nullable|string|max:255',
             'require_representative_phone' => 'nullable|boolean',
         ]);
@@ -52,8 +48,6 @@ class SettingController extends Controller
             $this->tenant()->forceFill(['bot_token' => trim($request->bot_token)])->save();
         }
 
-        Setting::set('welcome_message', $request->welcome_message);
-        Setting::set('error_message', $request->error_message);
         Setting::set('require_representative_phone', $request->boolean('require_representative_phone') ? '1' : '0');
 
         return back()->with('success', 'تنظیمات با موفقیت ذخیره شد.');

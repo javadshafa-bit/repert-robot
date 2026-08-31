@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\BotTextController;
 use App\Http\Controllers\Admin\BroadcastController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -112,6 +113,11 @@ Route::middleware(['admin.auth', 'tenant'])->prefix('admin')->name('admin.')->gr
         Route::post('/settings/connect',    [SettingController::class, 'connect'])->name('settings.connect');
         Route::post('/settings/disconnect', [SettingController::class, 'disconnect'])->name('settings.disconnect');
         Route::post('/settings/flow',    [SettingController::class, 'updateFlow'])->name('settings.flow');
+
+        // متن‌های ربات
+        Route::get('/bot-texts',        [BotTextController::class, 'index'])->name('bot-texts.index');
+        Route::post('/bot-texts',       [BotTextController::class, 'update'])->name('bot-texts.update');
+        Route::post('/bot-texts/reset', [BotTextController::class, 'reset'])->name('bot-texts.reset');
     });
 
     // نمایندگان

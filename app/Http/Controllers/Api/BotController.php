@@ -12,6 +12,7 @@ use App\Models\Report;
 use App\Models\Representative;
 use App\Models\Setting;
 use App\Models\Tenant;
+use App\Support\BotText;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -105,7 +106,7 @@ class BotController extends Controller
 
         if ($text === '/start') return $this->handleStart($chatId, $state);
         if (isset($message['contact'])) return $this->handleContact($chatId, $message['contact']['phone_number'], $state);
-        if (!$state->representative_id) return $this->sendMessage($chatId, Setting::get('error_message', 'شما مجاز به استفاده نیستید.'));
+        if (!$state->representative_id) return $this->sendMessage($chatId, BotText::get('error_message'));
 
         if (in_array($state->step, ['answering_field', 'editing_field'])) {
             $isEditing = $state->step === 'editing_field';
@@ -138,14 +139,14 @@ class BotController extends Controller
         // در مرحله تأیید گزارش: پیام ویرایش‌شده را به عنوان ویرایش گزارش پردازش کن
         if ($state->step === 'confirming') {
             if ($text) {
-                $this->sendMessage($chatId, "✏️ پیام شما ویرایش شد. برای اعمال تغییر، گزینه «ویرایش» را از منوی تأیید انتخاب کنید.");
+                $this->sendMessage($chatId, BotText::get('info_edited_message'));
             }
             return;
         }
 
         // سایر مراحل: نادیده بگیر یا راهنمایی کن
         if ($text || $photo) {
-            $this->sendMessage($chatId, "⚠️ ویرایش پیام در این مرحله قابل پردازش نیست. پیام جدیدی ارسال کنید.");
+            $this->sendMessage($chatId, BotText::get('err_edit_not_supported'));
         }
     }
 
@@ -157,7 +158,7 @@ class BotController extends Controller
         if (!$state || !$state->representative_id) return;
 
         if ($data === 'main_start_report') {
-            if ($state->step !== 'idle') { $this->sendMessage($chatId, "⚠️ ابتدا گزارش جاری را تکمیل کنید."); return; }
+            if ($state->step !== 'idle') { $this->sendMessage($chatId, BotText::get('warn_finish_current')); return; }
             $this->deleteTrackedMessage($chatId, $state);
             $this->startReportFlow($chatId, $state);
 
@@ -332,12 +333,12 @@ class BotController extends Controller
     {
         if ($state->representative_id) {
             $rep = Representative::with('province')->find($state->representative_id);
-            $this->sendMessage($chatId, "سلام {$rep->first_name} عزیز از استان {$rep->province->name}!");
+            $this->sendMessage($chatId, BotText::get('greeting_returning', $this->repVars($rep)));
             $this->showMainMenu($chatId);
             return;
         }
-        $welcome  = Setting::get('welcome_message', 'خوش آمدید. لطفاً شماره خود را ارسال کنید.');
-        $keyboard = ['keyboard' => [[['text' => '📱 ارسال شماره تماس (جهت احراز هویت)', 'request_contact' => true]]], 'resize_keyboard' => true, 'one_time_keyboard' => true];
+        $welcome  = BotText::get('welcome_message');
+        $keyboard = ['keyboard' => [[['text' => BotText::get('btn_share_contact'), 'request_contact' => true]]], 'resize_keyboard' => true, 'one_time_keyboard' => true];
         $this->sendMessage($chatId, $welcome, $keyboard);
         $state->update(['step' => 'waiting_for_contact']);
     }
@@ -351,7 +352,7 @@ class BotController extends Controller
 
         // نماینده‌های بدون شماره (phone_number = null) نباید با ورودی خالی مچ شوند
         if ($phoneNumber === '') {
-            $this->sendMessage($chatId, Setting::get('error_message', 'شماره شما در سیستم ثبت نشده است.'));
+            $this->sendMessage($chatId, BotText::get('error_message'));
             return;
         }
 
@@ -359,17 +360,17 @@ class BotController extends Controller
         if ($rep) {
             $rep->update(['chat_id' => $chatId, 'is_connected' => true]);
             $state->update(['representative_id' => $rep->id, 'step' => 'idle']);
-            $this->sendMessage($chatId, "احراز هویت موفق. سلام {$rep->first_name} عزیز از استان {$rep->province->name}!");
+            $this->sendMessage($chatId, BotText::get('auth_success', $this->repVars($rep)));
             $this->showMainMenu($chatId);
         } else {
-            $this->sendMessage($chatId, Setting::get('error_message', 'شماره شما در سیستم ثبت نشده است.'));
+            $this->sendMessage($chatId, BotText::get('error_message'));
         }
     }
 
     private function showMainMenu(string $chatId): void
     {
-        $keyboard = ['inline_keyboard' => [[['text' => '📝 ارسال گزارش جدید', 'callback_data' => 'main_start_report']]]];
-        $msgId    = $this->sendMessage($chatId, "لطفاً یک گزینه را انتخاب کنید:", $keyboard);
+        $keyboard = ['inline_keyboard' => [[['text' => BotText::get('btn_new_report'), 'callback_data' => 'main_start_report']]]];
+        $msgId    = $this->sendMessage($chatId, BotText::get('main_menu_prompt'), $keyboard);
         BotState::where('chat_id', $chatId)->update(['step' => 'idle', 'last_message_id' => $msgId]);
     }
 
@@ -377,29 +378,29 @@ class BotController extends Controller
     {
         $now    = Jalalian::now();
         $months = [$now->format('Y-m'), $now->subMonths(1)->format('Y-m'), $now->subMonths(2)->format('Y-m')];
-        $inlineKeyboard = array_map(fn($m) => [['text' => 'گزارش ' . $this->formatJalaliMonthName($m), 'callback_data' => "month_$m"]], $months);
-        $inlineKeyboard[] = [['text' => '🔙 انصراف', 'callback_data' => 'go_back']];
-        $msgId = $this->sendMessage($chatId, "ماه گزارش را انتخاب کنید:", ['inline_keyboard' => $inlineKeyboard]);
+        $inlineKeyboard = array_map(fn($m) => [['text' => BotText::get('btn_month_item', ['month' => $this->formatJalaliMonthName($m)]), 'callback_data' => "month_$m"]], $months);
+        $inlineKeyboard[] = [['text' => BotText::get('btn_cancel'), 'callback_data' => 'go_back']];
+        $msgId = $this->sendMessage($chatId, BotText::get('ask_month'), ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
 
     private function askDepartment(string $chatId, BotState $state): void
     {
         $departments = Department::where('is_active', true)->orderBy('sort_order')->get();
-        if ($departments->isEmpty()) { $this->sendMessage($chatId, "هیچ دپارتمان فعالی وجود ندارد!"); return; }
+        if ($departments->isEmpty()) { $this->sendMessage($chatId, BotText::get('empty_departments')); return; }
         $inlineKeyboard = $departments->map(fn($d) => [['text' => $d->name, 'callback_data' => "department_{$d->id}"]])->toArray();
-        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
-        $msgId = $this->sendMessage($chatId, "دپارتمان مربوطه را انتخاب کنید:", ['inline_keyboard' => $inlineKeyboard]);
+        $inlineKeyboard[] = [['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']];
+        $msgId = $this->sendMessage($chatId, BotText::get('ask_department'), ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
 
     private function askCategory(string $chatId, BotState $state): void
     {
         $categories = Category::where('is_active', true)->orderBy('sort_order')->get();
-        if ($categories->isEmpty()) { $this->sendMessage($chatId, "هیچ دسته‌بندی فعالی وجود ندارد!"); return; }
+        if ($categories->isEmpty()) { $this->sendMessage($chatId, BotText::get('empty_categories')); return; }
         $inlineKeyboard = $categories->map(fn($c) => [['text' => $c->name, 'callback_data' => "category_{$c->id}"]])->toArray();
-        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
-        $msgId = $this->sendMessage($chatId, "نوع گزارش را انتخاب کنید:", ['inline_keyboard' => $inlineKeyboard]);
+        $inlineKeyboard[] = [['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']];
+        $msgId = $this->sendMessage($chatId, BotText::get('ask_category'), ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
 
@@ -412,7 +413,7 @@ class BotController extends Controller
         if ($field->type === 'option') {
             $this->askOptionField($chatId, $state, $field);
         } else {
-            $backKeyboard = ['inline_keyboard' => [[['text' => '🔙 بازگشت', 'callback_data' => 'go_back']]]];
+            $backKeyboard = ['inline_keyboard' => [[['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']]]];
             $msgId = $this->sendMessage($chatId, $this->buildFieldPrompt($field), $backKeyboard);
             $state->update(['last_message_id' => $msgId, 'step' => 'answering_field']);
         }
@@ -423,11 +424,11 @@ class BotController extends Controller
         $options = $field->options;
         if ($options->isEmpty()) { $this->popField($state); $this->prependAlwaysChildFields($state, $field); $this->askNextField($chatId, $state); return; }
 
-        $prompt = "لطفاً یکی را انتخاب کنید:\n\n🔹 *{$field->label}*";
+        $prompt = BotText::get('field_option_header') . "\n\n🔹 *{$field->label}*";
         if ($field->description) $prompt .= "\n📝 _{$field->description}_";
 
         $inlineKeyboard   = $options->map(fn($o) => [['text' => $o->label, 'callback_data' => "opt_{$o->id}"]])->toArray();
-        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
+        $inlineKeyboard[] = [['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']];
         $msgId = $this->sendMessage($chatId, $prompt, ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId, 'step' => 'answering_field']);
     }
@@ -469,9 +470,9 @@ class BotController extends Controller
     /** منوی انتخاب شاخه: وقتی چند فیلد option فرزند داریم، کاربر فقط یکی را انتخاب می‌کند */
     private function askBranchSelection(string $chatId, BotState $state, $childFields, string $parentLabel): void
     {
-        $prompt = "لطفاً یکی را انتخاب کنید:\n\n🔹 *{$parentLabel}*";
+        $prompt = BotText::get('field_option_header') . "\n\n🔹 *{$parentLabel}*";
         $inlineKeyboard   = $childFields->map(fn($f) => [['text' => $f->label, 'callback_data' => "branch_{$f->id}"]])->toArray();
-        $inlineKeyboard[] = [['text' => '🔙 بازگشت', 'callback_data' => 'go_back']];
+        $inlineKeyboard[] = [['text' => BotText::get('btn_back'), 'callback_data' => 'go_back']];
         $msgId = $this->sendMessage($chatId, $prompt, ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
@@ -480,7 +481,7 @@ class BotController extends Controller
     private function handleBranchSelected(string $chatId, BotState $state, int $fieldId): void
     {
         $field = CategoryField::find($fieldId);
-        if (!$field) { $this->sendMessage($chatId, "⚠️ این گزینه دیگر معتبر نیست، ادامه می‌دهیم."); $this->askNextField($chatId, $state); return; }
+        if (!$field) { $this->sendMessage($chatId, BotText::get('err_option_invalid')); $this->askNextField($chatId, $state); return; }
 
         // ثبت انتخاب شاخه در draft_data
         $draft   = $state->draft_data ?? [];
@@ -498,12 +499,12 @@ class BotController extends Controller
         $field = $this->currentField($state);
         if (!$field) { $this->askNextField($chatId, $state); return; }
 
-        if ($field->type === 'photo') { $this->sendMessage($chatId, "⚠️ برای این فیلد باید عکس ارسال کنید."); return; }
+        if ($field->type === 'photo') { $this->sendMessage($chatId, BotText::get('err_need_photo')); return; }
 
         if ($field->type === 'link') {
             // مسیر URL می‌تواند شامل حروف فارسی یا کاراکترهای percent-encoded باشد (\S = هر کاراکتر غیر فاصله)
             if (!preg_match('/^(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z]{2,10}(?::\d+)?(?:[\/?#]\S*)?$/iu', trim($text))) {
-                $this->sendMessage($chatId, "⚠️ لینک معتبر نیست.\nمثال: `https://example.com`");
+                $this->sendMessage($chatId, BotText::get('err_invalid_link'));
                 return;
             }
         }
@@ -526,13 +527,13 @@ class BotController extends Controller
         $field = $this->currentField($state);
         if (!$field) { $this->askNextField($chatId, $state); return; }
 
-        if (in_array($field->type, ['text', 'link'])) { $this->sendMessage($chatId, "⚠️ این فیلد نیاز به پاسخ متنی دارد."); return; }
+        if (in_array($field->type, ['text', 'link'])) { $this->sendMessage($chatId, BotText::get('err_need_text')); return; }
 
         $fileId   = $photo ? end($photo)['file_id'] : $document['file_id'];
         $fileName = $document['file_name'] ?? (uniqid() . '.jpg');
         $filePath = $this->downloadFile($fileId, $fileName);
 
-        if (!$filePath) { $this->sendMessage($chatId, "⚠️ خطایی در آپلود فایل رخ داد. دوباره تلاش کنید."); return; }
+        if (!$filePath) { $this->sendMessage($chatId, BotText::get('err_upload_failed')); return; }
 
         if ($field->is_multiple) {
             $this->appendToMultiple($chatId, $state, $field, $filePath, $isEditing);
@@ -548,7 +549,7 @@ class BotController extends Controller
             }
             $state->update(['draft_data' => $draft, 'step' => $isEditing ? 'preview' : 'answering_field']);
             $this->deleteTrackedMessage($chatId, $state);
-            if ($isEditing) { $this->sendMessage($chatId, "✅ فایل ویرایش شد."); $this->showPreview($chatId, $state); }
+            if ($isEditing) { $this->sendMessage($chatId, BotText::get('file_edit_done')); $this->showPreview($chatId, $state); }
             else $this->askNextField($chatId, $state);
         }
     }
@@ -592,7 +593,7 @@ class BotController extends Controller
         $found = false;
         foreach ($draft as $item) { if ($item['field_id'] === $field->id) { $found = true; break; } }
 
-        if (!$found) { $this->sendMessage($chatId, "⚠️ لطفاً حداقل یک " . $this->fieldTypeName($field->type) . " ارسال کنید."); return; }
+        if (!$found) { $this->sendMessage($chatId, BotText::get('err_need_at_least_one', ['type' => $this->fieldTypeName($field->type)])); return; }
 
         $this->deleteTrackedMessage($chatId, $state);
         if ($isEditing) { $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); }
@@ -603,7 +604,7 @@ class BotController extends Controller
     {
         $field = $this->currentField($state);
         if (!$field) { $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); return; }
-        if ($field->type === 'photo') { $this->sendMessage($chatId, "⚠️ برای ویرایش این فیلد باید عکس ارسال کنید."); return; }
+        if ($field->type === 'photo') { $this->sendMessage($chatId, BotText::get('err_need_photo_edit')); return; }
 
         $draft = $state->draft_data ?? [];
         foreach ($draft as &$item) {
@@ -624,14 +625,14 @@ class BotController extends Controller
         unset($item);
         $state->update(['draft_data' => $draft, 'step' => 'preview']);
         $this->deleteTrackedMessage($chatId, $state);
-        $this->sendMessage($chatId, "✅ ویرایش انجام شد.");
+        $this->sendMessage($chatId, BotText::get('edit_done'));
         $this->showPreview($chatId, $state);
     }
 
     private function startEditField(string $chatId, BotState $state, int $fieldId): void
     {
         $field = CategoryField::find($fieldId);
-        if (!$field) { $this->sendMessage($chatId, "⚠️ این فیلد دیگر معتبر نیست."); $this->showPreview($chatId, $state); return; }
+        if (!$field) { $this->sendMessage($chatId, BotText::get('err_field_invalid')); $this->showPreview($chatId, $state); return; }
 
         if ($field->is_multiple) {
             $draft = $state->draft_data ?? [];
@@ -657,22 +658,24 @@ class BotController extends Controller
         $draft          = $state->draft_data ?? [];
         $formattedMonth = $this->formatJalaliMonthName($state->jalali_month ?? '');
 
-        $msg = "📄 *پیش‌نمایش گزارش شما*\nماه: $formattedMonth\nدسته: {$category->name}\n\n";
+        $msg = BotText::get('preview_title') . "\n"
+             . BotText::get('preview_month_label') . ": $formattedMonth\n"
+             . BotText::get('preview_category_label') . ": {$category->name}\n\n";
         foreach ($draft as $item) {
             $val = $item['value'];
             if ($item['type'] === 'branch') {
-                $msg .= "🔀 *مسیر انتخاب‌شده:* {$val}\n\n";
+                $msg .= BotText::get('preview_branch_label') . " {$val}\n\n";
                 continue;
             }
             $display = is_array($val)
-                ? ($item['type'] === 'photo' ? count($val) . ' عکس آپلود شد' : '• ' . implode("\n• ", $val))
-                : ($item['type'] === 'photo' ? '[عکس آپلود شد]' : $val);
+                ? ($item['type'] === 'photo' ? BotText::get('photo_uploaded_count', ['count' => count($val)]) : '• ' . implode("\n• ", $val))
+                : ($item['type'] === 'photo' ? BotText::get('photo_uploaded_single') : $val);
             $msg .= "▫️ *{$item['label']}:*\n{$display}\n\n";
         }
 
         $keyboard = ['inline_keyboard' => [
-            [['text' => '✅ تایید و ارسال نهایی', 'callback_data' => 'confirm_report']],
-            [['text' => '✏️ ویرایش پاسخ‌ها',      'callback_data' => 'request_edit']],
+            [['text' => BotText::get('btn_confirm'),     'callback_data' => 'confirm_report']],
+            [['text' => BotText::get('btn_request_edit'), 'callback_data' => 'request_edit']],
         ]];
 
         $msgId = $this->sendMessage($chatId, $msg, $keyboard);
@@ -683,8 +686,8 @@ class BotController extends Controller
     {
         $draft          = $state->draft_data ?? [];
         $editableItems  = array_values(array_filter($draft, fn($item) => ($item['type'] ?? '') !== 'branch'));
-        $inlineKeyboard = array_map(fn($item) => [['text' => 'ویرایش: ' . $item['label'], 'callback_data' => "edit_field_{$item['field_id']}"]], $editableItems);
-        $msgId = $this->sendMessage($chatId, "کدام بخش را می‌خواهید ویرایش کنید؟", ['inline_keyboard' => $inlineKeyboard]);
+        $inlineKeyboard = array_map(fn($item) => [['text' => BotText::get('btn_edit_item', ['label' => $item['label']]), 'callback_data' => "edit_field_{$item['field_id']}"]], $editableItems);
+        $msgId = $this->sendMessage($chatId, BotText::get('ask_which_edit'), ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId]);
     }
 
@@ -699,7 +702,7 @@ class BotController extends Controller
             'data'              => $state->draft_data,
         ]);
         $state->update(['step' => 'idle', 'draft_data' => [], 'field_queue' => []]);
-        $this->sendMessage($chatId, "🎉 گزارش شما با موفقیت ثبت شد!");
+        $this->sendMessage($chatId, BotText::get('report_saved'));
         $this->showMainMenu($chatId);
     }
 
@@ -709,11 +712,11 @@ class BotController extends Controller
 
     private function buildFieldPrompt(CategoryField $field): string
     {
-        $msg = "لطفاً پاسخ دهید:\n\n🔹 *{$field->label}*";
+        $msg = BotText::get('field_prompt_header') . "\n\n🔹 *{$field->label}*";
         if ($field->type === 'photo')
-            $msg .= $field->is_multiple ? "\n\n(عکس‌ها را یکی یکی ارسال کنید — وقتی تمام شد دکمه پایان را بزنید)" : "\n\n(لطفاً *عکس* مربوطه را ارسال کنید)";
+            $msg .= "\n\n" . BotText::get($field->is_multiple ? 'hint_photo_multiple' : 'hint_photo_single');
         elseif ($field->type === 'link')
-            $msg .= "\n\n(لینک را با فرمت `https://...` ارسال کنید)";
+            $msg .= "\n\n" . BotText::get('hint_link');
         if (!empty($field->description))
             $msg .= "\n📝 _{$field->description}_";
         return $msg;
@@ -723,15 +726,30 @@ class BotController extends Controller
     {
         $typeLabel    = $this->fieldTypeName($field->type);
         $doneCallback = $isEditing ? 'field_multiple_done_edit' : 'field_multiple_done';
-        $text         = "✅ تاکنون *{$count} {$typeLabel}* دریافت شد.\n\nمی‌توانید {$typeLabel} دیگری ارسال کنید یا دکمه پایان را بزنید.";
-        $keyboard     = ['inline_keyboard' => [[['text' => '✅ پایان ارسال این بخش — مرحله بعدی', 'callback_data' => $doneCallback]]]];
+        $text         = BotText::get('multiple_progress', ['count' => $count, 'type' => $typeLabel]);
+        $keyboard     = ['inline_keyboard' => [[['text' => BotText::get('btn_multiple_done'), 'callback_data' => $doneCallback]]]];
         $msgId        = $this->sendMessage($chatId, $text, $keyboard);
         BotState::where('chat_id', $chatId)->update(['last_message_id' => $msgId]);
     }
 
+    /** متغیرهای در دسترس متن‌های مربوط به نماینده */
+    private function repVars($rep): array
+    {
+        return [
+            'name'     => $rep->first_name,
+            'family'   => $rep->last_name,
+            'fullname' => trim($rep->first_name . ' ' . $rep->last_name),
+            'province' => $rep->province->name ?? '',
+        ];
+    }
+
     private function fieldTypeName(string $type): string
     {
-        return match ($type) { 'photo' => 'عکس', 'link' => 'لینک', default => 'آیتم' };
+        return match ($type) {
+            'photo' => BotText::get('type_photo'),
+            'link'  => BotText::get('type_link'),
+            default => BotText::get('type_item'),
+        };
     }
 
     private function sendMessage(string $chatId, string $text, $replyMarkup = null): ?int

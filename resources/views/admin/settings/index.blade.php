@@ -74,13 +74,13 @@
                         <label for="bot_token" class="block text-sm font-medium mb-2">توکن ربات (Bot Token)</label>
                         <input type="text" id="bot_token" name="bot_token" value="{{ $settings['bot_token'] }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" placeholder="123456789:ABCdefGhI...">
                     </div>
-                    <div>
-                        <label for="welcome_message" class="block text-sm font-medium mb-2">پیام خوش‌آمدگویی</label>
-                        <textarea id="welcome_message" name="welcome_message" rows="3" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" required>{{ $settings['welcome_message'] }}</textarea>
-                    </div>
-                    <div>
-                        <label for="error_message" class="block text-sm font-medium mb-2">پیام خطای عدم دسترسی</label>
-                        <textarea id="error_message" name="error_message" rows="3" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" required>{{ $settings['error_message'] }}</textarea>
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <p class="text-sm text-gray-700 mb-1">پیام خوش‌آمد، پیام خطا و بقیه متن‌های ربات</p>
+                        <p class="text-xs text-gray-500 mb-3">همه متن‌هایی که نماینده در بله می‌بیند حالا یک صفحه اختصاصی دارند.</p>
+                        <a href="{{ route('admin.bot-texts.index') }}"
+                           class="py-1.5 px-3 inline-flex items-center gap-x-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50">
+                            رفتن به متن‌های ربات
+                        </a>
                     </div>
 
                     <div class="pt-4 border-t border-gray-100">
