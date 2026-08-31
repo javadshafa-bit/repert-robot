@@ -82,6 +82,25 @@
                         <label for="error_message" class="block text-sm font-medium mb-2">پیام خطای عدم دسترسی</label>
                         <textarea id="error_message" name="error_message" rows="3" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" required>{{ $settings['error_message'] }}</textarea>
                     </div>
+
+                    <div class="pt-4 border-t border-gray-100">
+                        <label for="require_representative_phone" class="flex items-start gap-3 cursor-pointer">
+                            <input type="hidden" name="require_representative_phone" value="0">
+                            <input type="checkbox"
+                                   id="require_representative_phone"
+                                   name="require_representative_phone"
+                                   value="1"
+                                   {{ $settings['require_representative_phone'] == '1' ? 'checked' : '' }}
+                                   class="mt-0.5 shrink-0 size-4 border-gray-300 rounded text-blue-600 focus:ring-blue-500">
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800">وارد کردن شماره تماس نماینده اجباری باشد</span>
+                                <span class="block text-xs text-gray-500 mt-0.5">
+                                    اگر خاموش باشد، می‌توانید نماینده را بدون شماره ثبت کنید. نماینده‌ی بدون شماره فقط یک رکورد آماری است
+                                    و تا وقتی شماره‌اش ثبت نشود نمی‌تواند در ربات احراز هویت کند.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
                 <div class="mt-6">
                     <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-green-600 text-white hover:bg-green-700">

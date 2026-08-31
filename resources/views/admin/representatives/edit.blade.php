@@ -22,8 +22,18 @@
             </div>
 
             <div class="mb-4">
-                <label for="phone_number" class="block text-sm font-medium mb-2">شماره تماس بله</label>
-                <input type="text" id="phone_number" name="phone_number" value="{{ old('phone_number', $representative->phone_number) }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" required>
+                <label for="phone_number" class="block text-sm font-medium mb-2">
+                    شماره تماس بله
+                    @if($phoneRequired)
+                        <span class="text-red-600">*</span>
+                    @else
+                        <span class="text-xs font-normal text-gray-400">(اختیاری)</span>
+                    @endif
+                </label>
+                <input type="text" id="phone_number" name="phone_number" value="{{ old('phone_number', $representative->phone_number) }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" placeholder="09123456789" {{ $phoneRequired ? 'required' : '' }}>
+                @unless($phoneRequired)
+                    <p class="text-xs text-gray-500 mt-1">اگر خالی بماند، نماینده نمی‌تواند در ربات احراز هویت کند.</p>
+                @endunless
             </div>
 
             <div class="mb-6">

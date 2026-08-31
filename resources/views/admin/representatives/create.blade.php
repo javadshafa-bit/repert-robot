@@ -21,9 +21,21 @@
             </div>
 
             <div class="mb-4">
-                <label for="phone_number" class="block text-sm font-medium mb-2">شماره تماس بله (الزامی برای ربات)</label>
-                <input type="text" id="phone_number" name="phone_number" value="{{ old('phone_number') }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" placeholder="09123456789" required>
-                <p class="text-xs text-gray-500 mt-1">شماره باید دقیقا با شماره اکانت بله کاربر یکسان باشد.</p>
+                <label for="phone_number" class="block text-sm font-medium mb-2">
+                    شماره تماس بله
+                    @if($phoneRequired)
+                        <span class="text-red-600">*</span>
+                    @else
+                        <span class="text-xs font-normal text-gray-400">(اختیاری)</span>
+                    @endif
+                </label>
+                <input type="text" id="phone_number" name="phone_number" value="{{ old('phone_number') }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" placeholder="09123456789" {{ $phoneRequired ? 'required' : '' }}>
+                <p class="text-xs text-gray-500 mt-1">
+                    شماره باید دقیقا با شماره اکانت بله کاربر یکسان باشد.
+                    @unless($phoneRequired)
+                        اگر خالی بماند، نماینده فقط رکورد آماری است و تا ثبت شماره نمی‌تواند وارد ربات شود.
+                    @endunless
+                </p>
             </div>
 
             <div class="mb-6">

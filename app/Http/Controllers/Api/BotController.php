@@ -347,7 +347,15 @@ class BotController extends Controller
         if (str_starts_with($phoneNumber, '+98'))    $phoneNumber = '0' . substr($phoneNumber, 3);
         elseif (str_starts_with($phoneNumber, '98')) $phoneNumber = '0' . substr($phoneNumber, 2);
 
-        $rep = Representative::with('province')->where('phone_number', $phoneNumber)->first();
+        $phoneNumber = trim($phoneNumber);
+
+        // نماینده‌های بدون شماره (phone_number = null) نباید با ورودی خالی مچ شوند
+        if ($phoneNumber === '') {
+            $this->sendMessage($chatId, Setting::get('error_message', 'شماره شما در سیستم ثبت نشده است.'));
+            return;
+        }
+
+        $rep = Representative::with('province')->whereNotNull('phone_number')->where('phone_number', $phoneNumber)->first();
         if ($rep) {
             $rep->update(['chat_id' => $chatId, 'is_connected' => true]);
             $state->update(['representative_id' => $rep->id, 'step' => 'idle']);

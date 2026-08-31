@@ -18,7 +18,7 @@
                 <tr>
                     <td class="px-4 py-3">{{ $row->first_name }} {{ $row->last_name }}</td>
                     <td class="px-4 py-3 text-slate-500">{{ $row->province?->name ?: '—' }}</td>
-                    <td class="px-4 py-3 text-slate-500" dir="ltr">{{ $row->phone_number }}</td>
+                    <td class="px-4 py-3 text-slate-500" dir="ltr">{{ $row->phone_number ?: '—' }}</td>
                     <td class="px-4 py-3">
                         @if($row->chat_id)
                             <span class="text-green-700">متصل</span>

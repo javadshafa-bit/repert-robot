@@ -20,7 +20,13 @@
                 <ul class="space-y-4 text-sm">
                     <li><span class="text-gray-500 block text-xs mb-1">نام و نام خانوادگی:</span> <span class="font-semibold text-gray-800">{{ $representative->full_name }}</span></li>
                     <li><span class="text-gray-500 block text-xs mb-1">استان:</span> <span class="font-semibold text-gray-800">{{ $representative->province->name }}</span></li>
-                    <li><span class="text-gray-500 block text-xs mb-1">شماره تماس بله:</span> <span class="font-semibold text-gray-800" dir="ltr">{{ $representative->phone_number }}</span></li>
+                    <li><span class="text-gray-500 block text-xs mb-1">شماره تماس بله:</span>
+                        @if($representative->phone_number)
+                            <span class="font-semibold text-gray-800" dir="ltr">{{ $representative->phone_number }}</span>
+                        @else
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">ثبت نشده — غیرفعال در ربات</span>
+                        @endif
+                    </li>
                     <li>
                         <span class="text-gray-500 block text-xs mb-1">وضعیت اتصال به ربات:</span>
                         @if($representative->is_connected)

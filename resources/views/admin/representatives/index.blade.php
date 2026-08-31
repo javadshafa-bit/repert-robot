@@ -57,7 +57,13 @@
             @forelse($representatives as $rep)
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">{{ $rep->full_name }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800" dir="ltr">{{ $rep->phone_number }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800" dir="ltr">
+                        @if($rep->phone_number)
+                            {{ $rep->phone_number }}
+                        @else
+                            <span dir="rtl" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700" title="بدون شماره نمی‌تواند در ربات احراز هویت کند">بدون شماره</span>
+                        @endif
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{ $rep->province->name }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                         @if($rep->is_connected)
