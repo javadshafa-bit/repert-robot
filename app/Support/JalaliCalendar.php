@@ -39,6 +39,12 @@ class JalaliCalendar
         10 => 'دی',     11 => 'بهمن',    12 => 'اسفند',
     ];
 
+    /** ۰۱۲۳ → ۰۱۲۳ فارسی؛ همه‌ی اعدادی که کاربر می‌بیند از این رد می‌شوند */
+    public static function fa($value): string
+    {
+        return strtr((string) $value, ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']);
+    }
+
     // ==========================================
     // مرزهای مجاز
     // ==========================================
@@ -135,10 +141,10 @@ class JalaliCalendar
         return sprintf('%04d/%02d/%02d', $year, $month, $day);
     }
 
-    /** «۹ شهریور ۱۴۰۵» */
+    /** «۹ شهریور ۱۴۰۵» با ارقام فارسی */
     public static function formatLong(int $year, int $month, int $day): string
     {
-        return $day . ' ' . (self::MONTH_NAMES[$month] ?? '') . ' ' . $year;
+        return self::fa($day) . ' ' . (self::MONTH_NAMES[$month] ?? '') . ' ' . self::fa($year);
     }
 
     // ==========================================
@@ -163,7 +169,7 @@ class JalaliCalendar
         }
 
         $rows = array_map(
-            fn($chunk) => array_map(fn($y) => ['text' => (string) $y, 'callback_data' => "calm_$y"], $chunk),
+            fn($chunk) => array_map(fn($y) => ['text' => self::fa($y), 'callback_data' => "calm_$y"], $chunk),
             array_chunk($years, 4)
         );
 
@@ -214,7 +220,7 @@ class JalaliCalendar
             if (!self::inRange($year, $month, $d, $range)) {
                 continue;
             }
-            $buttons[] = ['text' => (string) $d, 'callback_data' => "calp_{$year}_{$month}_{$d}"];
+            $buttons[] = ['text' => self::fa($d), 'callback_data' => "calp_{$year}_{$month}_{$d}"];
         }
 
         $rows = array_chunk($buttons, 7);

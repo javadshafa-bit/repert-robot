@@ -58,6 +58,10 @@
                     <span class="px-2 py-0.5 rounded bg-green-100 text-green-700 shrink-0 font-medium">لینک</span>
                     <span>کاربر URL ارسال می‌کند</span>
                 </div>
+                <div class="flex items-start gap-2">
+                    <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0 font-medium">تاریخ</span>
+                    <span>انتخاب از تقویم شمسی (سال ← ماه ← روز) — تایپ نمی‌شود</span>
+                </div>
             </div>
         </div>
     </div>
@@ -1365,7 +1369,7 @@ async function _paletteCreateOption(fieldId) {
 
 async function _paletteCreateField(parentOptionId, type) {
     const catId  = _catId();
-    const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک' };
+    const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک', date: 'فیلد تاریخ' };
     const label  = labels[type] || 'فیلد جدید';
     const fd = new FormData();
     fd.append('label', label);
@@ -1391,7 +1395,7 @@ async function _paletteCreateField(parentOptionId, type) {
 async function _paletteCreateAlwaysChildField(parentFieldId, type) {
     try {
         const catId  = _catId();
-        const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک' };
+        const labels = { text: 'فیلد متنی', option: 'فیلد گزینه‌ای', photo: 'فیلد عکس', link: 'فیلد لینک', date: 'فیلد تاریخ' };
         const label  = labels[type] || 'فیلد جدید';
         const fd = new FormData();
         fd.append('label', label);

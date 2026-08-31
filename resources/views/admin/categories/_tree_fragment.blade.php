@@ -42,6 +42,9 @@
         <div class="vtree-palette-chip" draggable="true"
              ondragstart="vtreePaletteDrag(event,'link')"
              style="background:#f0fdf4;border:1.5px solid #4ade80;color:#15803d">🔗 لینک</div>
+        <div class="vtree-palette-chip" draggable="true"
+             ondragstart="vtreePaletteDrag(event,'date')"
+             style="background:#fffbeb;border:1.5px solid #fbbf24;color:#b45309">📅 تاریخ</div>
         <div style="width:1px;height:1.2rem;background:#e5e7eb;margin:0 .15rem"></div>
         <div id="palette-copy-section" style="display:none;align-items:center;gap:.35rem">
             <span id="palette-sel-count" style="font-size:.7rem;color:#6366f1;font-weight:600"></span>

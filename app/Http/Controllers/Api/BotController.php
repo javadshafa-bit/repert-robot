@@ -667,17 +667,38 @@ class BotController extends Controller
     {
         $msgId = $this->sendMessage(
             $chatId,
-            $this->datePrompt($field, 'date_pick_year'),
+            $this->datePrompt($field),
             JalaliCalendar::yearKeyboard($field->date_range, 0)
         );
         $state->update(['last_message_id' => $msgId, 'step' => $state->step === 'editing_field' ? 'editing_field' : 'answering_field']);
     }
 
-    /** سرتیتر مرحله + عنوان و توضیح فیلد */
-    private function datePrompt(CategoryField $field, string $key, array $vars = []): string
+    /**
+     * متن تقویم: انتخاب‌های تأییدشده با ✅ می‌مانند و سوال مرحله‌ی جاری زیرشان می‌آید.
+     *
+     *   ✅ سال انتخابی شما: ۱۴۰۵
+     *   ✅ ماه انتخابی شما: شهریور
+     *   📅 روز مورد نظر خود را انتخاب کنید
+     */
+    private function datePrompt(CategoryField $field, ?int $year = null, ?int $month = null): string
     {
-        $prompt = BotText::get($key, $vars) . "\n\n🔹 *{$field->label}*";
+        $lines = [];
+
+        if ($year !== null) {
+            $lines[] = BotText::get('date_chosen_year', ['year' => JalaliCalendar::fa($year)]);
+        }
+        if ($month !== null) {
+            $lines[] = BotText::get('date_chosen_month', ['month' => JalaliCalendar::MONTH_NAMES[$month] ?? $month]);
+        }
+
+        // سوال مرحله‌ی جاری: هرچه هنوز انتخاب نشده
+        if ($year === null)       $lines[] = BotText::get('date_pick_year');
+        elseif ($month === null)  $lines[] = BotText::get('date_pick_month');
+        else                      $lines[] = BotText::get('date_pick_day');
+
+        $prompt = implode("\n", $lines) . "\n\n🔹 *{$field->label}*";
         if ($field->description) $prompt .= "\n📝 _{$field->description}_";
+
         return $prompt;
     }
 
@@ -698,7 +719,7 @@ class BotController extends Controller
         if (str_starts_with($data, 'caly_')) {
             $page = max(0, (int) substr($data, 5));
             $this->editCalendar($chatId, $state,
-                $this->datePrompt($field, 'date_pick_year'),
+                $this->datePrompt($field),
                 JalaliCalendar::yearKeyboard($range, $page));
             return;
         }
@@ -706,7 +727,7 @@ class BotController extends Controller
         if (str_starts_with($data, 'calm_')) {
             $year = (int) substr($data, 5);
             $this->editCalendar($chatId, $state,
-                $this->datePrompt($field, 'date_pick_month', ['year' => $year]),
+                $this->datePrompt($field, $year),
                 JalaliCalendar::monthKeyboard($year, $range));
             return;
         }
@@ -714,10 +735,7 @@ class BotController extends Controller
         if (str_starts_with($data, 'cald_')) {
             [$year, $month] = array_map('intval', explode('_', substr($data, 5)));
             $this->editCalendar($chatId, $state,
-                $this->datePrompt($field, 'date_pick_day', [
-                    'year'  => $year,
-                    'month' => JalaliCalendar::MONTH_NAMES[$month] ?? $month,
-                ]),
+                $this->datePrompt($field, $year, $month),
                 JalaliCalendar::dayKeyboard($year, $month, $range));
             return;
         }
