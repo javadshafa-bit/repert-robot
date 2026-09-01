@@ -56,6 +56,12 @@ class BotText
                         'vars'    => ['name', 'family', 'fullname', 'province'],
                         'rows'    => 2,
                     ],
+                    'greeting_open_access' => [
+                        'label'   => 'سلام اولیه در حالت دسترسی آزاد',
+                        'default' => 'سلام {name} عزیز! 👋',
+                        'vars'    => ['name', 'family', 'fullname', 'province'],
+                        'rows'    => 2,
+                    ],
                     'error_message' => [
                         'label'   => 'پیام خطای عدم دسترسی / شماره ناشناس',
                         'default' => 'شما مجاز به استفاده از این ربات نیستید.',

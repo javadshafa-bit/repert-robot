@@ -2,10 +2,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Province;
 use App\Models\Setting;
 use App\Models\Tenant;
 use App\Services\BotConnector;
 use App\Support\TenantContext;
+use App\Support\TenantRule;
 use Illuminate\Http\Request;
 
 class SettingController extends Controller
@@ -32,9 +34,13 @@ class SettingController extends Controller
             'bot_username'    => $tenant->bot_username,
             'webhook_url'     => $tenant->webhookUrl(),
             'require_representative_phone' => Setting::get('require_representative_phone', '1'),
+            'bot_open_access'    => Setting::get('bot_open_access', '0'),
+            'guest_province_id'  => Setting::get('guest_province_id', ''),
         ];
 
-        return view('admin.settings.index', compact('settings', 'flowSteps', 'tenant'));
+        $provinces = Province::orderBy('name')->get();
+
+        return view('admin.settings.index', compact('settings', 'flowSteps', 'tenant', 'provinces'));
     }
 
     public function update(Request $request)
@@ -42,6 +48,8 @@ class SettingController extends Controller
         $request->validate([
             'bot_token'       => 'nullable|string|max:255',
             'require_representative_phone' => 'nullable|boolean',
+            'bot_open_access'   => 'nullable|boolean',
+            'guest_province_id' => ['nullable', TenantRule::exists('provinces')],
         ]);
 
         if ($request->filled('bot_token')) {
@@ -49,6 +57,8 @@ class SettingController extends Controller
         }
 
         Setting::set('require_representative_phone', $request->boolean('require_representative_phone') ? '1' : '0');
+        Setting::set('bot_open_access', $request->boolean('bot_open_access') ? '1' : '0');
+        Setting::set('guest_province_id', (string) ($request->input('guest_province_id') ?: ''));
 
         return back()->with('success', 'تنظیمات با موفقیت ذخیره شد.');
     }

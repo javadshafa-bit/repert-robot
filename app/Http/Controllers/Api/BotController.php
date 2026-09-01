@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\CategoryField;
 use App\Models\Department;
 use App\Models\FieldOption;
+use App\Models\Province;
 use App\Models\Report;
 use App\Models\Representative;
 use App\Models\Setting;
@@ -105,7 +106,7 @@ class BotController extends Controller
         BotState::firstOrCreate(['chat_id' => $chatId]);
         $state = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
 
-        if ($text === '/start') return $this->handleStart($chatId, $state);
+        if ($text === '/start') return $this->handleStart($chatId, $state, $message['from'] ?? []);
         if (isset($message['contact'])) return $this->handleContact($chatId, $message['contact']['phone_number'], $state);
         if (!$state->representative_id) return $this->sendMessage($chatId, BotText::get('error_message'));
 
@@ -336,7 +337,7 @@ class BotController extends Controller
     // Ask steps
     // ==========================================
 
-    private function handleStart(string $chatId, BotState $state): void
+    private function handleStart(string $chatId, BotState $state, array $from = []): void
     {
         if ($state->representative_id) {
             $rep = Representative::with('province')->find($state->representative_id);
@@ -344,10 +345,66 @@ class BotController extends Controller
             $this->showMainMenu($chatId);
             return;
         }
+
+        // دسترسی آزاد: ربات شماره نمی‌پرسد و خودش هویت می‌سازد
+        if (Setting::get('bot_open_access', '0') === '1') {
+            $rep = $this->resolveOpenAccessRep($chatId, $from);
+            if ($rep) {
+                $state->update(['representative_id' => $rep->id, 'step' => 'idle']);
+                $rep->load('province');
+                $this->sendMessage($chatId, BotText::get('greeting_open_access', $this->repVars($rep)));
+                $this->showMainMenu($chatId);
+                return;
+            }
+            // نتوانستیم بسازیم (هیچ استانی تعریف نشده) — به مسیر عادی برمی‌گردیم
+            // تا کاربر دست‌کم پیام روشنی ببیند، نه سکوت.
+            Log::warning('open access: no province available', ['tenant' => TenantContext::id(), 'chat' => $chatId]);
+        }
+
         $welcome  = BotText::get('welcome_message');
         $keyboard = ['keyboard' => [[['text' => BotText::get('btn_share_contact'), 'request_contact' => true]]], 'resize_keyboard' => true, 'one_time_keyboard' => true];
         $this->sendMessage($chatId, $welcome, $keyboard);
         $state->update(['step' => 'waiting_for_contact']);
+    }
+
+    /**
+     * در حالت دسترسی آزاد، هر چت خودش یک نماینده می‌شود.
+     *
+     * شماره خالی می‌ماند (همان قابلیت «شماره اختیاری») و نام از پروفایل بله
+     * می‌آید، پس ربات هیچ سوالی نمی‌پرسد ولی گزارش‌ها همچنان به یک شخص وصل‌اند.
+     * این مهم است چون reports.representative_id ستون NOT NULL است و داشبورد
+     * با join روی نمایندگان آمار می‌گیرد — گزارش بی‌صاحب از آمار می‌افتاد بیرون.
+     */
+    private function resolveOpenAccessRep(string $chatId, array $from): ?Representative
+    {
+        $existing = Representative::where('chat_id', $chatId)->first();
+        if ($existing) {
+            if (!$existing->is_connected) $existing->update(['is_connected' => true]);
+            return $existing;
+        }
+
+        // استان پیش‌فرض تنظیمات؛ اگر پاک شده باشد به اولین استان سازمان می‌افتیم
+        $provinceId = (int) Setting::get('guest_province_id', 0);
+        if (!$provinceId || !Province::whereKey($provinceId)->exists()) {
+            $provinceId = (int) Province::orderBy('id')->value('id');
+        }
+        if (!$provinceId) return null;
+
+        $first = trim((string) ($from['first_name'] ?? ''));
+        $last  = trim((string) ($from['last_name'] ?? ''));
+        if ($first === '' && $last === '') {
+            $first = 'کاربر';
+            $last  = substr($chatId, -6);
+        }
+
+        return Representative::create([
+            'province_id'  => $provinceId,
+            'first_name'   => mb_substr($first !== '' ? $first : 'کاربر', 0, 100),
+            'last_name'    => mb_substr($last  !== '' ? $last  : '—',     0, 100),
+            'phone_number' => null,
+            'chat_id'      => $chatId,
+            'is_connected' => true,
+        ]);
     }
 
     private function handleContact(string $chatId, string $phoneNumber, BotState $state): void

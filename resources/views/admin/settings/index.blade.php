@@ -101,6 +101,46 @@
                             </span>
                         </label>
                     </div>
+
+                    <div class="pt-4 border-t border-gray-100">
+                        <label for="bot_open_access" class="flex items-start gap-3 cursor-pointer">
+                            <input type="hidden" name="bot_open_access" value="0">
+                            <input type="checkbox"
+                                   id="bot_open_access"
+                                   name="bot_open_access"
+                                   value="1"
+                                   onchange="document.getElementById('guest-province-wrap').classList.toggle('hidden', !this.checked)"
+                                   {{ $settings['bot_open_access'] == '1' ? 'checked' : '' }}
+                                   class="mt-0.5 shrink-0 size-4 border-gray-300 rounded text-blue-600 focus:ring-blue-500">
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800">ربات برای همه باز باشد (بدون احراز هویت)</span>
+                                <span class="block text-xs text-gray-500 mt-0.5 leading-6">
+                                    اگر روشن باشد، ربات شماره تماس نمی‌پرسد و هر کسی که /start بزند می‌تواند گزارش ثبت کند.
+                                    برای هر کاربر تازه، خودکار یک نماینده با نام پروفایل بله و بدون شماره ساخته می‌شود تا
+                                    گزارش‌ها بی‌صاحب نمانند و آمار به‌ازای نماینده سر جایش بماند.
+                                </span>
+                            </span>
+                        </label>
+
+                        <div id="guest-province-wrap" class="mt-3 pr-7 {{ $settings['bot_open_access'] == '1' ? '' : 'hidden' }}">
+                            <label for="guest_province_id" class="block text-xs font-medium text-gray-600 mb-1">
+                                استان پیش‌فرض کاربران آزاد
+                            </label>
+                            <select id="guest_province_id" name="guest_province_id"
+                                    class="py-2 px-3 block w-full sm:w-72 border border-gray-200 rounded-lg text-sm">
+                                <option value="">— اولین استان فهرست —</option>
+                                @foreach($provinces as $province)
+                                    <option value="{{ $province->id }}"
+                                        {{ (string) $settings['guest_province_id'] === (string) $province->id ? 'selected' : '' }}>
+                                        {{ $province->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">
+                                چون استانِ نماینده در دیتابیس اجباری است، کاربران آزاد همگی در این استان ثبت می‌شوند.
+                            </p>
+                        </div>
+                    </div>
                 </div>
                 <div class="mt-6">
                     <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-green-600 text-white hover:bg-green-700">
