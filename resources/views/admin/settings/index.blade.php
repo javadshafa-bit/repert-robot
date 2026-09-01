@@ -122,7 +122,25 @@
                             </span>
                         </label>
 
-                        <div id="guest-province-wrap" class="mt-3 pr-7 {{ $settings['bot_open_access'] == '1' ? '' : 'hidden' }}">
+                        <div id="guest-province-wrap" class="mt-3 pr-7 space-y-4 {{ $settings['bot_open_access'] == '1' ? '' : 'hidden' }}">
+                            <div>
+                                <label for="open_access_phone_mode" class="block text-xs font-medium text-gray-600 mb-1">
+                                    درخواست شماره تماس از کاربر
+                                </label>
+                                <select id="open_access_phone_mode" name="open_access_phone_mode"
+                                        class="py-2 px-3 block w-full sm:w-72 border border-gray-200 rounded-lg text-sm">
+                                    <option value="none"     {{ $settings['open_access_phone_mode'] === 'none'     ? 'selected' : '' }}>نمی‌پرسد — کاربر مستقیم وارد می‌شود</option>
+                                    <option value="optional" {{ $settings['open_access_phone_mode'] === 'optional' ? 'selected' : '' }}>می‌پرسد، ولی اختیاری است</option>
+                                    <option value="required" {{ $settings['open_access_phone_mode'] === 'required' ? 'selected' : '' }}>می‌پرسد و اجباری است</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1 leading-6">
+                                    در هر سه حالت کاربر جدید پذیرفته می‌شود؛ فرق‌شان فقط در گرفتن شماره است.
+                                    اگر شماره‌ای که کاربر می‌فرستد قبلاً به‌نام یکی از نماینده‌های ثبت‌شده باشد،
+                                    به همان رکورد وصل می‌شود و رکورد تکراری ساخته نمی‌شود.
+                                </p>
+                            </div>
+
+                            <div>
                             <label for="guest_province_id" class="block text-xs font-medium text-gray-600 mb-1">
                                 استان پیش‌فرض کاربران آزاد
                             </label>
@@ -139,6 +157,7 @@
                             <p class="text-xs text-gray-500 mt-1">
                                 چون استانِ نماینده در دیتابیس اجباری است، کاربران آزاد همگی در این استان ثبت می‌شوند.
                             </p>
+                            </div>
                         </div>
                     </div>
                 </div>

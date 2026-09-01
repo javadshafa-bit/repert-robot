@@ -56,6 +56,18 @@ class BotText
                         'vars'    => ['name', 'family', 'fullname', 'province'],
                         'rows'    => 2,
                     ],
+                    'btn_skip_contact' => [
+                        'label'   => 'دکمه رد کردن ارسال شماره (حالت اختیاری)',
+                        'default' => 'فعلاً نمی‌خواهم شماره بدهم',
+                        'vars'    => [],
+                        'rows'    => 1,
+                    ],
+                    'err_need_contact' => [
+                        'label'   => 'وقتی به‌جای دکمه، متن فرستاده شود',
+                        'default' => 'برای ادامه لطفاً از دکمه‌ی پایین صفحه استفاده کنید.',
+                        'vars'    => [],
+                        'rows'    => 2,
+                    ],
                     'greeting_open_access' => [
                         'label'   => 'سلام اولیه در حالت دسترسی آزاد',
                         'default' => 'سلام {name} عزیز! 👋',

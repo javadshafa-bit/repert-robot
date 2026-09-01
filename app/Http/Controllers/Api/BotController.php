@@ -107,7 +107,20 @@ class BotController extends Controller
         $state = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
 
         if ($text === '/start') return $this->handleStart($chatId, $state, $message['from'] ?? []);
-        if (isset($message['contact'])) return $this->handleContact($chatId, $message['contact']['phone_number'], $state);
+        if (isset($message['contact'])) {
+            return $this->handleContact($chatId, $message['contact'], $state, $message['from'] ?? []);
+        }
+
+        // منتظر شماره‌ایم و کاربر متن فرستاده: یا دارد مرحله را رد می‌کند،
+        // یا نمی‌داند باید دکمه را بزند. پیام «مجاز نیستی» اینجا گمراه‌کننده بود.
+        if ($state->step === 'waiting_for_contact' && !$state->representative_id) {
+            $skipLabel = trim(BotText::get('btn_skip_contact'));
+            if ($this->openAccessPhoneMode() === 'optional' && $text !== null && trim($text) === $skipLabel) {
+                return $this->handleContactSkip($chatId, $state, $message['from'] ?? []);
+            }
+            return $this->sendMessage($chatId, BotText::get('err_need_contact'));
+        }
+
         if (!$state->representative_id) return $this->sendMessage($chatId, BotText::get('error_message'));
 
         if (in_array($state->step, ['answering_field', 'editing_field'])) {
@@ -346,25 +359,70 @@ class BotController extends Controller
             return;
         }
 
-        // دسترسی آزاد: ربات شماره نمی‌پرسد و خودش هویت می‌سازد
-        if (Setting::get('bot_open_access', '0') === '1') {
-            $rep = $this->resolveOpenAccessRep($chatId, $from);
-            if ($rep) {
-                $state->update(['representative_id' => $rep->id, 'step' => 'idle']);
-                $rep->load('province');
-                $this->sendMessage($chatId, BotText::get('greeting_open_access', $this->repVars($rep)));
-                $this->showMainMenu($chatId);
+        if ($this->openAccess()) {
+            $mode = $this->openAccessPhoneMode();
+
+            // «نمی‌پرسد»: هیچ سوالی نیست، هویت همان‌جا ساخته می‌شود
+            if ($mode === 'none') {
+                $rep = $this->resolveOpenAccessRep($chatId, $from);
+                if ($rep) {
+                    $state->update(['representative_id' => $rep->id, 'step' => 'idle']);
+                    $rep->load('province');
+                    $this->sendMessage($chatId, BotText::get('greeting_open_access', $this->repVars($rep)));
+                    $this->showMainMenu($chatId);
+                    return;
+                }
+                // نتوانستیم بسازیم (هیچ استانی تعریف نشده) — به مسیر عادی برمی‌گردیم
+                // تا کاربر دست‌کم پیام روشنی ببیند، نه سکوت.
+                Log::warning('open access: no province available', ['tenant' => TenantContext::id(), 'chat' => $chatId]);
+            } else {
+                // «اختیاری» یا «اجباری»: شماره پرسیده می‌شود ولی هر شماره‌ای پذیرفته است
+                $this->askForContact($chatId, $state, $mode === 'optional');
                 return;
             }
-            // نتوانستیم بسازیم (هیچ استانی تعریف نشده) — به مسیر عادی برمی‌گردیم
-            // تا کاربر دست‌کم پیام روشنی ببیند، نه سکوت.
-            Log::warning('open access: no province available', ['tenant' => TenantContext::id(), 'chat' => $chatId]);
         }
 
-        $welcome  = BotText::get('welcome_message');
-        $keyboard = ['keyboard' => [[['text' => BotText::get('btn_share_contact'), 'request_contact' => true]]], 'resize_keyboard' => true, 'one_time_keyboard' => true];
-        $this->sendMessage($chatId, $welcome, $keyboard);
+        $this->askForContact($chatId, $state, false);
+    }
+
+    /** آیا ربات این سازمان برای همه باز است؟ */
+    private function openAccess(): bool
+    {
+        return Setting::get('bot_open_access', '0') === '1';
+    }
+
+    /** در حالت آزاد، شماره پرسیده شود؟ none | optional | required */
+    private function openAccessPhoneMode(): string
+    {
+        if (!$this->openAccess()) return 'required';   // حالت بسته: شماره تنها راه ورود است
+        $mode = Setting::get('open_access_phone_mode', 'none');
+        return in_array($mode, ['none', 'optional', 'required'], true) ? $mode : 'none';
+    }
+
+    /** درخواست اشتراک شماره؛ در حالت اختیاری یک دکمه‌ی «رد کردن» هم می‌گذارد */
+    private function askForContact(string $chatId, BotState $state, bool $skippable): void
+    {
+        $rows = [[['text' => BotText::get('btn_share_contact'), 'request_contact' => true]]];
+        if ($skippable) $rows[] = [['text' => BotText::get('btn_skip_contact')]];
+
+        $this->sendMessage($chatId, BotText::get('welcome_message'), [
+            'keyboard'         => $rows,
+            'resize_keyboard'  => true,
+            'one_time_keyboard' => true,
+        ]);
         $state->update(['step' => 'waiting_for_contact']);
+    }
+
+    /** کاربر در حالت «شماره اختیاری» مرحله را رد کرد */
+    private function handleContactSkip(string $chatId, BotState $state, array $from): void
+    {
+        $rep = $this->resolveOpenAccessRep($chatId, $from);
+        if (!$rep) { $this->sendMessage($chatId, BotText::get('error_message')); return; }
+
+        $state->update(['representative_id' => $rep->id, 'step' => 'idle']);
+        $rep->load('province');
+        $this->sendMessage($chatId, BotText::get('greeting_open_access', $this->repVars($rep)));
+        $this->showMainMenu($chatId);
     }
 
     /**
@@ -407,8 +465,10 @@ class BotController extends Controller
         ]);
     }
 
-    private function handleContact(string $chatId, string $phoneNumber, BotState $state): void
+    private function handleContact(string $chatId, array $contact, BotState $state, array $from = []): void
     {
+        $phoneNumber = (string) ($contact['phone_number'] ?? '');
+
         if (str_starts_with($phoneNumber, '+98'))    $phoneNumber = '0' . substr($phoneNumber, 3);
         elseif (str_starts_with($phoneNumber, '98')) $phoneNumber = '0' . substr($phoneNumber, 2);
 
@@ -421,7 +481,26 @@ class BotController extends Controller
         }
 
         $rep = Representative::with('province')->whereNotNull('phone_number')->where('phone_number', $phoneNumber)->first();
+
+        // در حالت آزاد، شماره‌ی ناشناس هم پذیرفته است: یا رکورد این چت را
+        // تکمیل می‌کنیم یا یکی تازه می‌سازیم. نام از خود contact بهتر است
+        // چون کاربر آن را خودش تأیید کرده.
+        if (!$rep && $this->openAccess()) {
+            $rep = $this->resolveOpenAccessRep($chatId, $contact + $from);
+            if ($rep && !$rep->phone_number) {
+                $rep->update(['phone_number' => $phoneNumber]);
+                $rep->load('province');
+            }
+        }
+
         if ($rep) {
+            // یک چت فقط می‌تواند به یک نماینده وصل باشد و chat_id یکتاست.
+            // اگر این چت قبلاً (مثلاً در حالت «بدون شماره») رکورد دیگری گرفته
+            // باشد، اول رهایش می‌کنیم وگرنه update با خطای unique می‌ترکد.
+            Representative::where('chat_id', $chatId)
+                ->where('id', '!=', $rep->id)
+                ->update(['chat_id' => null, 'is_connected' => false]);
+
             $rep->update(['chat_id' => $chatId, 'is_connected' => true]);
             $state->update(['representative_id' => $rep->id, 'step' => 'idle']);
             $this->sendMessage($chatId, BotText::get('auth_success', $this->repVars($rep)));
