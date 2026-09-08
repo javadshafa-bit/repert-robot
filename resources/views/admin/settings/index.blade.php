@@ -126,6 +126,24 @@
                     </div>
 
                     <div class="pt-4 border-t border-gray-100">
+                        <label for="bot_auth_method" class="block text-sm font-medium text-gray-800 mb-1">
+                            روش ورود نماینده به ربات
+                        </label>
+                        <select id="bot_auth_method" name="bot_auth_method"
+                                class="py-2 px-3 block w-full sm:w-96 border border-gray-200 rounded-lg text-sm">
+                            <option value="contact" {{ $settings['bot_auth_method'] === 'contact' ? 'selected' : '' }}>اشتراک شماره تماس بله (پیش‌فرض)</option>
+                            <option value="otp"     {{ $settings['bot_auth_method'] === 'otp'     ? 'selected' : '' }}>کد پرسنلی + شماره + کد پیامکی</option>
+                            <option value="both"    {{ $settings['bot_auth_method'] === 'both'    ? 'selected' : '' }}>هر دو — کاربر انتخاب می‌کند</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1 leading-6">
+                            روش «کد پرسنلی» به درد کسی می‌خورد که شماره‌ی حساب بله‌اش با شماره‌ی ثبت‌شده‌اش فرق دارد.
+                            برای کار کردنش، نماینده باید هم کد پرسنلی و هم شماره داشته باشد و سرویس پیامک هم فعال باشد.
+                            این تنظیم فقط وقتی اثر دارد که «ربات برای همه باز باشد» خاموش باشد — در حالت باز
+                            هر کسی پذیرفته می‌شود و احراز هویت موضوعیت ندارد.
+                        </p>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-100">
                         <label for="bot_open_access" class="flex items-start gap-3 cursor-pointer">
                             <input type="hidden" name="bot_open_access" value="0">
                             <input type="checkbox"

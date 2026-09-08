@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\CategoryField;
 use App\Models\Department;
 use App\Models\FieldOption;
+use App\Models\OtpCode;
 use App\Models\Province;
 use App\Models\Report;
 use App\Models\Representative;
@@ -15,11 +16,13 @@ use App\Models\Setting;
 use App\Models\Tenant;
 use App\Support\BotText;
 use App\Support\JalaliCalendar;
+use App\Support\Sms\SmsSender;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Morilog\Jalali\Jalalian;
@@ -109,6 +112,12 @@ class BotController extends Controller
         if ($text === '/start') return $this->handleStart($chatId, $state, $message['from'] ?? []);
         if (isset($message['contact'])) {
             return $this->handleContact($chatId, $message['contact'], $state, $message['from'] ?? []);
+        }
+
+        // جریان ورود با کد پرسنلی. باید پیش از گارد representative_id بیاید،
+        // چون تمام این مراحل دقیقاً وقتی اتفاق می‌افتند که هنوز نماینده‌ای نداریم.
+        if (!$state->representative_id && $this->handleAuthMessage($chatId, $state, $text)) {
+            return;
         }
 
         // منتظر شماره‌ایم و کاربر متن فرستاده: یا دارد مرحله را رد می‌کند،
@@ -382,7 +391,30 @@ class BotController extends Controller
             }
         }
 
-        $this->askForContact($chatId, $state, false);
+        // حالت بسته: تنظیمات سازمان تعیین می‌کند با چه روشی وارد شود
+        $method = $this->authMethod();
+
+        if ($method === 'otp') {
+            $this->startOtpLogin($chatId, $state);
+            return;
+        }
+
+        $this->askForContact($chatId, $state, false, $method === 'both');
+    }
+
+    /**
+     * روش ورود در حالت بسته: contact | otp | both
+     *
+     * فقط در حالت بسته معنا دارد. در حالت دسترسی آزاد هر کسی پذیرفته می‌شود،
+     * پس احراز هویت با کد پرسنلی موضوعیت ندارد.
+     */
+    private function authMethod(): string
+    {
+        if ($this->openAccess()) return 'contact';
+
+        $method = Setting::get('bot_auth_method', 'contact');
+
+        return in_array($method, ['contact', 'otp', 'both'], true) ? $method : 'contact';
     }
 
     /** آیا ربات این سازمان برای همه باز است؟ */
@@ -400,10 +432,13 @@ class BotController extends Controller
     }
 
     /** درخواست اشتراک شماره؛ در حالت اختیاری یک دکمه‌ی «رد کردن» هم می‌گذارد */
-    private function askForContact(string $chatId, BotState $state, bool $skippable): void
+    private function askForContact(string $chatId, BotState $state, bool $skippable, bool $withOtp = false): void
     {
         $rows = [[['text' => BotText::get('btn_share_contact'), 'request_contact' => true]]];
         if ($skippable) $rows[] = [['text' => BotText::get('btn_skip_contact')]];
+        // دکمه‌ی کیبورد معمولی است نه inline: request_contact فقط در کیبورد
+        // معمولی کار می‌کند و نمی‌شود این دو را در یک پیام قاطی کرد.
+        if ($withOtp)   $rows[] = [['text' => BotText::get('btn_login_otp')]];
 
         $this->sendMessage($chatId, BotText::get('welcome_message'), [
             'keyboard'         => $rows,
@@ -465,6 +500,237 @@ class BotController extends Controller
         ]);
     }
 
+    // ==========================================
+    // ورود با کد پرسنلی + شماره + کد یک‌بارمصرف
+    // ==========================================
+
+    /** مرحله‌ی اول: کد پرسنلی را بپرس */
+    private function startOtpLogin(string $chatId, BotState $state): void
+    {
+        $state->update([
+            'step'      => 'auth_await_code',
+            'auth_data' => [],
+        ]);
+
+        $this->sendMessage($chatId, BotText::get('auth_ask_personnel_code'), ['remove_keyboard' => true]);
+    }
+
+    /**
+     * پیام‌های مربوط به جریان ورود را مصرف می‌کند.
+     *
+     * @return bool اگر true برگرداند، پیام رسیدگی شده و نباید ادامه پردازش شود.
+     */
+    private function handleAuthMessage(string $chatId, BotState $state, ?string $text): bool
+    {
+        $text = $text === null ? null : trim($text);
+
+        // دکمه‌ی «ورود با کد پرسنلی» از کیبورد حالت both
+        if ($text !== null
+            && $state->step === 'waiting_for_contact'
+            && $this->authMethod() === 'both'
+            && $text === trim(BotText::get('btn_login_otp'))) {
+            $this->startOtpLogin($chatId, $state);
+            return true;
+        }
+
+        if (!in_array($state->step, ['auth_await_code', 'auth_await_phone', 'auth_await_otp'], true)) {
+            return false;
+        }
+
+        // در این مراحل فقط متن معنا دارد؛ عکس و فایل را با راهنمایی رد می‌کنیم
+        if ($text === null || $text === '') {
+            $this->sendMessage($chatId, BotText::get('err_auth_need_text'));
+            return true;
+        }
+
+        // کاربر ایرانی معمولاً با کیبورد فارسی تایپ می‌کند و ارقامش ۱۲۳ است
+        $value = $this->toEnglishDigits($text);
+
+        return match ($state->step) {
+            'auth_await_code'  => $this->authStoreCode($chatId, $state, $value),
+            'auth_await_phone' => $this->authStorePhone($chatId, $state, $value),
+            'auth_await_otp'   => $this->authVerify($chatId, $state, $value),
+        };
+    }
+
+    /** کد پرسنلی گرفته شد — حالا شماره */
+    private function authStoreCode(string $chatId, BotState $state, string $code): bool
+    {
+        if (mb_strlen($code) > 50) {
+            $this->sendMessage($chatId, BotText::get('err_auth_not_found'));
+            return true;
+        }
+
+        $state->update([
+            'step'      => 'auth_await_phone',
+            'auth_data' => ['personnel_code' => $code],
+        ]);
+
+        $this->sendMessage($chatId, BotText::get('auth_ask_phone'));
+        return true;
+    }
+
+    /**
+     * شماره گرفته شد — تطبیق و ارسال کد.
+     *
+     * پیام «پیدا نشد» عمداً مبهم است: پیام دقیق («این کد پرسنلی وجود ندارد»)
+     * به یک غریبه اجازه می‌دهد کدهای پرسنلی معتبر را یکی‌یکی حدس بزند.
+     */
+    private function authStorePhone(string $chatId, BotState $state, string $phone): bool
+    {
+        $phone = $this->normalizeIranPhone($phone);
+        $code  = (string) (($state->auth_data['personnel_code'] ?? ''));
+
+        if ($phone === null || $code === '') {
+            $this->sendMessage($chatId, BotText::get('err_auth_not_found'));
+            return true;
+        }
+
+        // حدس زدنِ جفتِ (کد پرسنلی، شماره) نباید رایگان باشد. چون برای ترکیب
+        // غلط پیامکی نمی‌رود، تنها ترمز همین شمارنده است.
+        $probeKey = 'auth-probe:' . TenantContext::id() . ':' . $chatId;
+        if (RateLimiter::tooManyAttempts($probeKey, 10)) {
+            $this->sendMessage($chatId, BotText::get('err_auth_too_many'));
+            return true;
+        }
+        RateLimiter::hit($probeKey, 3600);
+
+        $rep = Representative::with('province')
+            ->whereNotNull('personnel_code')
+            ->whereNotNull('phone_number')
+            ->where('personnel_code', $code)
+            ->where('phone_number', $phone)
+            ->first();
+
+        if (!$rep) {
+            $this->sendMessage($chatId, BotText::get('err_auth_not_found'));
+            $this->startOtpLogin($chatId, $state);
+            return true;
+        }
+
+        return $this->authIssueOtp($chatId, $state, $rep, $phone);
+    }
+
+    /** ساخت و ارسال کد یک‌بارمصرف، با رعایت فاصله و سقف ساعتی */
+    private function authIssueOtp(string $chatId, BotState $state, Representative $rep, string $phone): bool
+    {
+        $recent = OtpCode::where('phone_number', $phone)
+            ->where('created_at', '>=', now()->subHour())
+            ->count();
+
+        if ($recent >= OtpCode::MAX_PER_HOUR) {
+            $this->sendMessage($chatId, BotText::get('err_otp_too_many'));
+            return true;
+        }
+
+        $last = OtpCode::where('chat_id', $chatId)->latest('id')->first();
+        if ($last && $last->created_at->diffInSeconds(now()) < OtpCode::RESEND_COOLDOWN_SECONDS) {
+            $wait = OtpCode::RESEND_COOLDOWN_SECONDS - (int) $last->created_at->diffInSeconds(now());
+            $this->sendMessage($chatId, BotText::get('err_otp_cooldown', ['seconds' => JalaliCalendar::fa((string) $wait)]));
+            return true;
+        }
+
+        [$otp, $plain] = OtpCode::issue($rep, $chatId, $phone);
+
+        if (!app(SmsSender::class)->sendOtp($phone, $plain)) {
+            // کد ساخته شد ولی نرفت — مصرفش می‌کنیم تا بلااستفاده نماند
+            $otp->consume();
+            $this->sendMessage($chatId, BotText::get('err_sms_failed'));
+            return true;
+        }
+
+        $state->update([
+            'step'      => 'auth_await_otp',
+            'auth_data' => ['personnel_code' => $rep->personnel_code, 'phone' => $phone, 'otp_id' => $otp->id],
+        ]);
+
+        $this->sendMessage($chatId, BotText::get('auth_otp_sent', ['phone' => $this->maskPhone($phone)]));
+        return true;
+    }
+
+    /** تطبیق کد واردشده */
+    private function authVerify(string $chatId, BotState $state, string $entered): bool
+    {
+        $otpId = $state->auth_data['otp_id'] ?? null;
+        $otp   = $otpId ? OtpCode::find($otpId) : null;
+
+        if (!$otp || !$otp->isUsable()) {
+            $this->sendMessage($chatId, BotText::get('err_otp_expired'));
+            $this->startOtpLogin($chatId, $state);
+            return true;
+        }
+
+        if (!$otp->matches($entered)) {
+            // matches خودش شمارنده را بالا برده؛ اگر سقف پر شد دیگر قابل استفاده نیست
+            $this->sendMessage($chatId, $otp->fresh()->isUsable()
+                ? BotText::get('err_otp_wrong')
+                : BotText::get('err_otp_expired'));
+
+            if (!$otp->fresh()->isUsable()) $this->startOtpLogin($chatId, $state);
+            return true;
+        }
+
+        $otp->consume();
+
+        $rep = Representative::with('province')->find($otp->representative_id);
+        if (!$rep) {
+            $this->sendMessage($chatId, BotText::get('err_auth_not_found'));
+            $this->startOtpLogin($chatId, $state);
+            return true;
+        }
+
+        $this->linkRepresentative($chatId, $state, $rep);
+        return true;
+    }
+
+    /**
+     * چت را به نماینده وصل می‌کند و به منو می‌برد.
+     *
+     * chat_id یکتاست، پس اگر این چت قبلاً رکورد دیگری گرفته باشد اول رهایش
+     * می‌کنیم وگرنه update با خطای unique می‌ترکد.
+     */
+    private function linkRepresentative(string $chatId, BotState $state, Representative $rep): void
+    {
+        Representative::where('chat_id', $chatId)
+            ->where('id', '!=', $rep->id)
+            ->update(['chat_id' => null, 'is_connected' => false]);
+
+        $rep->update(['chat_id' => $chatId, 'is_connected' => true]);
+        $state->update(['representative_id' => $rep->id, 'step' => 'idle', 'auth_data' => null]);
+
+        $this->sendMessage($chatId, BotText::get('auth_success', $this->repVars($rep)), ['remove_keyboard' => true]);
+        $this->showMainMenu($chatId);
+    }
+
+    /** ارقام فارسی و عربی را به انگلیسی تبدیل می‌کند */
+    private function toEnglishDigits(string $value): string
+    {
+        return strtr($value, [
+            '۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9',
+            '٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9',
+        ]);
+    }
+
+    /** شماره‌ی ایرانی را به شکل 09xxxxxxxxx می‌آورد؛ null یعنی معتبر نیست */
+    private function normalizeIranPhone(string $phone): ?string
+    {
+        $phone = preg_replace('/[\s\-()]/', '', $this->toEnglishDigits(trim($phone)));
+
+        if (str_starts_with($phone, '+98'))    $phone = '0' . substr($phone, 3);
+        elseif (str_starts_with($phone, '98')) $phone = '0' . substr($phone, 2);
+        elseif (str_starts_with($phone, '9'))  $phone = '0' . $phone;
+
+        return preg_match('/^09\d{9}$/', $phone) ? $phone : null;
+    }
+
+    /** 0912***4567 */
+    private function maskPhone(string $phone): string
+    {
+        if (strlen($phone) < 8) return '***';
+
+        return JalaliCalendar::fa(substr($phone, 0, 4) . '***' . substr($phone, -4));
+    }
+
     private function handleContact(string $chatId, array $contact, BotState $state, array $from = []): void
     {
         $phoneNumber = (string) ($contact['phone_number'] ?? '');
@@ -494,17 +760,7 @@ class BotController extends Controller
         }
 
         if ($rep) {
-            // یک چت فقط می‌تواند به یک نماینده وصل باشد و chat_id یکتاست.
-            // اگر این چت قبلاً (مثلاً در حالت «بدون شماره») رکورد دیگری گرفته
-            // باشد، اول رهایش می‌کنیم وگرنه update با خطای unique می‌ترکد.
-            Representative::where('chat_id', $chatId)
-                ->where('id', '!=', $rep->id)
-                ->update(['chat_id' => null, 'is_connected' => false]);
-
-            $rep->update(['chat_id' => $chatId, 'is_connected' => true]);
-            $state->update(['representative_id' => $rep->id, 'step' => 'idle']);
-            $this->sendMessage($chatId, BotText::get('auth_success', $this->repVars($rep)));
-            $this->showMainMenu($chatId);
+            $this->linkRepresentative($chatId, $state, $rep);
         } else {
             $this->sendMessage($chatId, BotText::get('error_message'));
         }

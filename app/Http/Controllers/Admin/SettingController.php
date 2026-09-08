@@ -36,6 +36,7 @@ class SettingController extends Controller
             'require_representative_phone' => Setting::get('require_representative_phone', '1'),
             'bot_open_access'    => Setting::get('bot_open_access', '0'),
             'open_access_phone_mode' => Setting::get('open_access_phone_mode', 'none'),
+            'bot_auth_method'        => Setting::get('bot_auth_method', 'contact'),
             'guest_province_id'  => Setting::get('guest_province_id', ''),
         ];
 
@@ -61,6 +62,7 @@ class SettingController extends Controller
             'require_representative_phone' => 'nullable|boolean',
             'bot_open_access'   => 'nullable|boolean',
             'open_access_phone_mode' => 'nullable|string|in:none,optional,required',
+            'bot_auth_method'        => 'nullable|string|in:contact,otp,both',
             'guest_province_id' => ['nullable', TenantRule::exists('provinces')],
         ]);
 
@@ -71,6 +73,7 @@ class SettingController extends Controller
         Setting::set('require_representative_phone', $request->boolean('require_representative_phone') ? '1' : '0');
         Setting::set('bot_open_access', $request->boolean('bot_open_access') ? '1' : '0');
         Setting::set('open_access_phone_mode', $request->input('open_access_phone_mode', 'none'));
+        Setting::set('bot_auth_method', $request->input('bot_auth_method', 'contact'));
         Setting::set('guest_province_id', (string) ($request->input('guest_province_id') ?: ''));
 
         return back()->with('success', 'تنظیمات با موفقیت ذخیره شد.');
