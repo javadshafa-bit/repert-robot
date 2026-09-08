@@ -47,6 +47,7 @@
             <thead class="bg-gray-50">
             <tr>
                 <th scope="col" class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">نام و نام خانوادگی</th>
+                <th scope="col" class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">کد پرسنلی</th>
                 <th scope="col" class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">شماره تماس</th>
                 <th scope="col" class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">استان</th>
                 <th scope="col" class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">وضعیت اتصال</th>
@@ -57,6 +58,9 @@
             @forelse($representatives as $rep)
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">{{ $rep->full_name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800" dir="ltr">
+                        {{ $rep->personnel_code ?: '—' }}
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800" dir="ltr">
                         @if($rep->phone_number)
                             {{ $rep->phone_number }}
@@ -86,7 +90,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="5" class="px-6 py-8 text-center text-gray-500">هیچ نماینده‌ای یافت نشد.</td>
+                    <td colspan="6" class="px-6 py-8 text-center text-gray-500">هیچ نماینده‌ای یافت نشد.</td>
                 </tr>
             @endforelse
             </tbody>

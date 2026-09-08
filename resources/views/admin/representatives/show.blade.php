@@ -20,6 +20,13 @@
                 <ul class="space-y-4 text-sm">
                     <li><span class="text-gray-500 block text-xs mb-1">نام و نام خانوادگی:</span> <span class="font-semibold text-gray-800">{{ $representative->full_name }}</span></li>
                     <li><span class="text-gray-500 block text-xs mb-1">استان:</span> <span class="font-semibold text-gray-800">{{ $representative->province->name }}</span></li>
+                    <li><span class="text-gray-500 block text-xs mb-1">کد پرسنلی:</span>
+                        @if($representative->personnel_code)
+                            <span class="font-semibold text-gray-800" dir="ltr">{{ $representative->personnel_code }}</span>
+                        @else
+                            <span class="text-gray-400">ثبت نشده</span>
+                        @endif
+                    </li>
                     <li><span class="text-gray-500 block text-xs mb-1">شماره تماس بله:</span>
                         @if($representative->phone_number)
                             <span class="font-semibold text-gray-800" dir="ltr">{{ $representative->phone_number }}</span>

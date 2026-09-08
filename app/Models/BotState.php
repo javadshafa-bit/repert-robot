@@ -10,13 +10,14 @@ class BotState extends Model
     use BelongsToTenant;
 
     protected $fillable = [
-        'chat_id', 'step', 'last_message_id', 'representative_id',
+        'chat_id', 'step', 'last_message_id', 'representative_id', 'auth_data',
         'department_id',
         'category_id', 'jalali_month',
         'draft_data', 'field_queue',
     ];
 
     protected $casts = [
+        'auth_data'   => 'array',
         'draft_data'  => 'array',
         'field_queue' => 'array',
     ];

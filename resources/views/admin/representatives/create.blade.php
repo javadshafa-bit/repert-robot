@@ -20,6 +20,20 @@
                 </div>
             </div>
 
+
+            <div class="mb-4">
+                <label for="personnel_code" class="block text-sm font-medium mb-2">
+                    کد پرسنلی
+                    <span class="text-xs font-normal text-gray-400">(اختیاری)</span>
+                </label>
+                <input type="text" id="personnel_code" name="personnel_code" value="{{ old('personnel_code') }}"
+                       class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500"
+                       dir="ltr" placeholder="مثلاً 10432">
+                <p class="text-xs text-gray-500 mt-1">
+                    در هر سازمان یکتاست. برای ورود به ربات با «کد پرسنلی + شماره + کد پیامکی» استفاده می‌شود.
+                </p>
+            </div>
+
             <div class="mb-4">
                 <label for="phone_number" class="block text-sm font-medium mb-2">
                     شماره تماس بله

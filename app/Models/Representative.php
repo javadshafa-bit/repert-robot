@@ -8,7 +8,7 @@ class Representative extends Model {
     use BelongsToTenant;
 
     protected $fillable = [
-        'province_id','first_name','last_name',
+        'province_id','first_name','last_name','personnel_code',
         'phone_number','chat_id','is_connected',
     ];
 
