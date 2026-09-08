@@ -74,6 +74,29 @@
                         <label for="bot_token" class="block text-sm font-medium mb-2">توکن ربات (Bot Token)</label>
                         <input type="text" id="bot_token" name="bot_token" value="{{ $settings['bot_token'] }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" placeholder="123456789:ABCdefGhI...">
                     </div>
+                    <div class="rounded-lg border {{ $smsStatus['is_log'] || !$smsStatus['configured'] ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50' }} p-4">
+                        <p class="text-sm font-semibold {{ $smsStatus['is_log'] || !$smsStatus['configured'] ? 'text-red-900' : 'text-emerald-900' }} mb-1">
+                            سرویس پیامک: {{ $smsStatus['name'] }}
+                        </p>
+                        @if($smsStatus['is_log'])
+                            <p class="text-xs text-red-800 leading-6">
+                                هیچ پیامکی ارسال نمی‌شود و کد یک‌بارمصرف در فایل لاگ سرور می‌نشیند.
+                                این حالت فقط برای توسعه است — پیش از استفاده‌ی واقعی باید
+                                <code dir="ltr" class="px-1 rounded bg-white/70">SMS_DRIVER=kavenegar</code>
+                                شود و کلید و نام الگو در فایل env قرار بگیرد.
+                            </p>
+                        @elseif(!$smsStatus['configured'])
+                            <p class="text-xs text-red-800 leading-6">
+                                درایور روی «{{ $smsStatus['driver'] }}» است ولی کلید API یا نام الگو تنظیم نشده،
+                                پس ارسال کد یک‌بارمصرف شکست می‌خورد.
+                            </p>
+                        @else
+                            <p class="text-xs text-emerald-800 leading-6">
+                                آماده‌ی ارسال کد یک‌بارمصرف است.
+                            </p>
+                        @endif
+                    </div>
+
                     <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                         <p class="text-sm text-gray-700 mb-1">پیام خوش‌آمد، پیام خطا و بقیه متن‌های ربات</p>
                         <p class="text-xs text-gray-500 mb-3">همه متن‌هایی که نماینده در بله می‌بیند حالا یک صفحه اختصاصی دارند.</p>

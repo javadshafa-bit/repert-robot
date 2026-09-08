@@ -41,7 +41,17 @@ class SettingController extends Controller
 
         $provinces = Province::orderBy('name')->get();
 
-        return view('admin.settings.index', compact('settings', 'flowSteps', 'tenant', 'provinces'));
+        // وضعیت پیامک از کانتینر خوانده می‌شود، نه مستقیم از config — همان
+        // چیزی را نشان می‌دهد که واقعاً هنگام ارسال استفاده خواهد شد.
+        $sms = app(\App\Support\Sms\SmsSender::class);
+        $smsStatus = [
+            'driver'     => config('sms.driver'),
+            'name'       => $sms->name(),
+            'configured' => $sms->isConfigured(),
+            'is_log'     => $sms instanceof \App\Support\Sms\LogSms,
+        ];
+
+        return view('admin.settings.index', compact('settings', 'flowSteps', 'tenant', 'provinces', 'smsStatus'));
     }
 
     public function update(Request $request)

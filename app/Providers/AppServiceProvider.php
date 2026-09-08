@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Support\Sms\KavenegarSms;
+use App\Support\Sms\LogSms;
+use App\Support\Sms\SmsSender;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -14,7 +17,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(SmsSender::class, function () {
+            // درایور ناشناخته نباید بی‌صدا به ارسال واقعی برسد؛ به log می‌افتد
+            return match (config('sms.driver')) {
+                'kavenegar' => new KavenegarSms(
+                    config('sms.kavenegar.api_key'),
+                    config('sms.kavenegar.template'),
+                    (int) config('sms.timeout', 10),
+                ),
+                default => new LogSms(),
+            };
+        });
     }
 
     /**
