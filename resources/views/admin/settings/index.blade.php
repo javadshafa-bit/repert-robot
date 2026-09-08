@@ -77,24 +77,57 @@
                     <div class="rounded-lg border {{ $smsStatus['is_log'] || !$smsStatus['configured'] ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50' }} p-4">
                         <p class="text-sm font-semibold {{ $smsStatus['is_log'] || !$smsStatus['configured'] ? 'text-red-900' : 'text-emerald-900' }} mb-1">
                             سرویس پیامک: {{ $smsStatus['name'] }}
+                            <span class="text-xs font-normal">({{ $smsStatus['own'] ? 'پنل این سازمان' : 'پنل مشترک نصب' }})</span>
                         </p>
                         @if($smsStatus['is_log'])
                             <p class="text-xs text-red-800 leading-6">
                                 هیچ پیامکی ارسال نمی‌شود و کد یک‌بارمصرف در فایل لاگ سرور می‌نشیند.
-                                این حالت فقط برای توسعه است — پیش از استفاده‌ی واقعی باید
-                                <code dir="ltr" class="px-1 rounded bg-white/70">SMS_DRIVER=kavenegar</code>
-                                شود و کلید و نام الگو در فایل env قرار بگیرد.
+                                برای ارسال واقعی، یا پنل پیامک این سازمان را پایین وصل کنید،
+                                یا مدیر نصب باید حساب مشترک را در فایل env تنظیم کند.
                             </p>
                         @elseif(!$smsStatus['configured'])
                             <p class="text-xs text-red-800 leading-6">
-                                درایور روی «{{ $smsStatus['driver'] }}» است ولی کلید API یا نام الگو تنظیم نشده،
-                                پس ارسال کد یک‌بارمصرف شکست می‌خورد.
+                                کلید API یا نام الگو تنظیم نشده، پس ارسال کد یک‌بارمصرف شکست می‌خورد.
                             </p>
                         @else
-                            <p class="text-xs text-emerald-800 leading-6">
-                                آماده‌ی ارسال کد یک‌بارمصرف است.
-                            </p>
+                            <p class="text-xs text-emerald-800 leading-6">آماده‌ی ارسال کد یک‌بارمصرف است.</p>
                         @endif
+
+                        <div class="mt-4 pt-3 border-t border-white/60">
+                            <label for="sms_source" class="block text-xs font-medium text-gray-700 mb-1">اعتبار پیامک از کجا باشد؟</label>
+                            <select id="sms_source" name="sms_source"
+                                    onchange="document.getElementById('sms-own-wrap').classList.toggle('hidden', this.value !== 'own')"
+                                    class="py-2 px-3 block w-full sm:w-80 border border-gray-200 rounded-lg text-sm bg-white">
+                                <option value="platform" {{ $settings['sms_source'] === 'platform' ? 'selected' : '' }}>پنل مشترک نصب</option>
+                                <option value="own"      {{ $settings['sms_source'] === 'own'      ? 'selected' : '' }}>پنل پیامک خودِ این سازمان</option>
+                            </select>
+
+                            <div id="sms-own-wrap" class="mt-3 space-y-3 {{ $settings['sms_source'] === 'own' ? '' : 'hidden' }}">
+                                <div>
+                                    <label for="sms_api_key" class="block text-xs font-medium text-gray-700 mb-1">
+                                        کلید API کاوه‌نگار
+                                        @if($settings['sms_api_key_set'])
+                                            <span class="text-emerald-700">— ثبت شده</span>
+                                        @endif
+                                    </label>
+                                    <input type="password" id="sms_api_key" name="sms_api_key" value="" autocomplete="new-password"
+                                           class="py-2 px-3 block w-full border border-gray-200 rounded-lg text-sm bg-white" dir="ltr"
+                                           placeholder="{{ $settings['sms_api_key_set'] ? 'برای تغییر، کلید تازه را بنویسید' : 'کلید را وارد کنید' }}">
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        کلید هیچ‌وقت در این صفحه نمایش داده نمی‌شود. خالی گذاشتنش یعنی «دست نزن».
+                                    </p>
+                                </div>
+                                <div>
+                                    <label for="sms_template" class="block text-xs font-medium text-gray-700 mb-1">نام الگوی تأییدشده</label>
+                                    <input type="text" id="sms_template" name="sms_template" value="{{ $settings['sms_template'] }}"
+                                           class="py-2 px-3 block w-full sm:w-80 border border-gray-200 rounded-lg text-sm bg-white" dir="ltr"
+                                           placeholder="verify">
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        همان نام الگویی که در پنل کاوه‌نگار ساخته و تأیید شده و یک <code dir="ltr">%token</code> دارد.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -208,6 +241,30 @@
                     </button>
                 </div>
             </form>
+
+            <div class="mt-6 pt-6 border-t border-gray-100 space-y-3">
+                <p class="text-sm font-medium text-gray-800">آزمایش پیامک</p>
+                <form action="{{ route('admin.settings.sms-test') }}" method="POST" class="flex flex-wrap gap-2 items-start">
+                    @csrf
+                    <input type="text" name="test_phone" required dir="ltr" placeholder="09123456789"
+                           class="py-2 px-3 border border-gray-200 rounded-lg text-sm w-56">
+                    <button type="submit"
+                            class="py-2 px-4 text-sm font-semibold rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
+                        ارسال پیامک آزمایشی
+                    </button>
+                </form>
+                <p class="text-xs text-gray-500">
+                    از همان مسیری می‌رود که ربات استفاده می‌کند. کد ارسالی واقعی نیست و هیچ‌جا ذخیره نمی‌شود.
+                </p>
+
+                @if($settings['sms_api_key_set'])
+                    <form action="{{ route('admin.settings.sms-clear') }}" method="POST"
+                          onsubmit="return confirm('کلید پنل پیامک این سازمان پاک شود؟');">
+                        @csrf
+                        <button type="submit" class="text-xs text-red-600 hover:text-red-800">پاک کردن کلید پنل پیامک</button>
+                    </form>
+                @endif
+            </div>
         </div>
 
         <!-- ترتیب مراحل ربات -->

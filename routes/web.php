@@ -113,6 +113,8 @@ Route::middleware(['admin.auth', 'tenant'])->prefix('admin')->name('admin.')->gr
         Route::post('/settings/connect',    [SettingController::class, 'connect'])->name('settings.connect');
         Route::post('/settings/disconnect', [SettingController::class, 'disconnect'])->name('settings.disconnect');
         Route::post('/settings/flow',    [SettingController::class, 'updateFlow'])->name('settings.flow');
+        Route::post('/settings/sms-test',  [SettingController::class, 'testSms'])->name('settings.sms-test');
+        Route::post('/settings/sms-clear', [SettingController::class, 'clearSmsKey'])->name('settings.sms-clear');
 
         // متن‌های ربات
         Route::get('/bot-texts',        [BotTextController::class, 'index'])->name('bot-texts.index');
