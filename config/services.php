@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // تلگرام از داخل ایران فیلتر است؛ اگر سرور مستقیم به api.telegram.org نمی‌رسد،
+    // یک پروکسی HTTP/SOCKS روی سرور خارج بدهید (مثل socks5h://user:pass@1.2.3.4:1080).
+    'telegram' => [
+        'proxy' => env('TELEGRAM_PROXY'),
+    ],
+
 ];

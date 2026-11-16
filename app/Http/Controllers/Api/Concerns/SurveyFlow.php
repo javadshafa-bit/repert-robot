@@ -212,7 +212,7 @@ trait SurveyFlow
         $rep = $state->representative_id ? Representative::find($state->representative_id) : null;
 
         if (!$rep) {
-            $rep = Representative::where('chat_id', $chatId)->first();
+            $rep = Representative::where($this->repChatColumn(), $chatId)->first();
             if ($rep) $state->update(['representative_id' => $rep->id]);
         }
 
@@ -319,7 +319,7 @@ trait SurveyFlow
         $rep = Representative::where('phone_number', $phone)->first();
 
         if (!$rep) {
-            $rep = Representative::where('chat_id', $chatId)->whereNull('phone_number')->first();
+            $rep = Representative::where($this->repChatColumn(), $chatId)->whereNull('phone_number')->first();
             if ($rep) {
                 $rep->update(['first_name' => $first, 'last_name' => $last !== '' ? $last : '—', 'phone_number' => $phone]);
             }
@@ -338,11 +338,7 @@ trait SurveyFlow
             ]);
         }
 
-        Representative::where('chat_id', $chatId)
-            ->where('id', '!=', $rep->id)
-            ->update(['chat_id' => null, 'is_connected' => false]);
-
-        $rep->update(['chat_id' => $chatId, 'is_connected' => true]);
+        $this->attachChatToRepresentative($chatId, $rep);
 
         return $rep;
     }

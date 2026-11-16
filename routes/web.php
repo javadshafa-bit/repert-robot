@@ -30,6 +30,11 @@ Route::post('/api/bot/webhook/{tenant:webhook_secret}', [BotController::class, '
     ->middleware('throttle:bot-webhook')
     ->name('bot.webhook');
 
+// وبهوک ربات تلگرام همان سازمان: همان secret، مسیر جدا (و هدر رمز تلگرام در کنترلر چک می‌شود)
+Route::post('/api/bot/telegram/{tenant:webhook_secret}', [BotController::class, 'handleTelegram'])
+    ->middleware('throttle:bot-webhook')
+    ->name('bot.webhook.telegram');
+
 // ─── مسیر سازگاری موقت ───────────────────────────────────────────────────────
 // ربات‌هایی که پیش از چندمستأجری‌سازی روی این آدرس setWebhook شده‌اند تا لحظه‌ی اجرای
 // `php artisan tenants:refresh-webhook` روی سرور، همچنان به همین‌جا POST می‌کنند.
@@ -112,6 +117,8 @@ Route::middleware(['admin.auth', 'tenant'])->prefix('admin')->name('admin.')->gr
         Route::post('/settings',         [SettingController::class, 'update'])->name('settings.update');
         Route::post('/settings/connect',    [SettingController::class, 'connect'])->name('settings.connect');
         Route::post('/settings/disconnect', [SettingController::class, 'disconnect'])->name('settings.disconnect');
+        Route::post('/settings/telegram/connect',    [SettingController::class, 'connectTelegram'])->name('settings.telegram.connect');
+        Route::post('/settings/telegram/disconnect', [SettingController::class, 'disconnectTelegram'])->name('settings.telegram.disconnect');
         Route::post('/settings/flow',    [SettingController::class, 'updateFlow'])->name('settings.flow');
         Route::post('/settings/sms-test',  [SettingController::class, 'testSms'])->name('settings.sms-test');
         Route::post('/settings/sms-clear', [SettingController::class, 'clearSmsKey'])->name('settings.sms-clear');

@@ -18,7 +18,7 @@ use Illuminate\Console\Command;
 class RefreshTenantWebhook extends Command
 {
     protected $signature   = 'tenants:refresh-webhook {tenant? : شناسه سازمان}';
-    protected $description = 'ثبت دوباره‌ی وبهوک بله با آدرس اختصاصی هر سازمان';
+    protected $description = 'ثبت دوباره‌ی وبهوک بله و تلگرام با آدرس اختصاصی هر سازمان';
 
     public function handle(BotConnector $bot): int
     {
@@ -35,7 +35,7 @@ class RefreshTenantWebhook extends Command
             return self::FAILURE;
         }
 
-        $query = Tenant::query()->whereNotNull('bot_token')->where('status', Tenant::STATUS_ACTIVE);
+        $query = Tenant::query()->withAnyBot()->where('status', Tenant::STATUS_ACTIVE);
 
         if ($id = $this->argument('tenant')) {
             $query->whereKey($id);
@@ -52,26 +52,30 @@ class RefreshTenantWebhook extends Command
 
         foreach ($tenants as $tenant) {
             $tenant->ensureWebhookSecret();
-            $result = $bot->setWebhook($tenant);
 
-            if (!$result['ok']) {
-                $failed++;
-                $this->error("tenant#{$tenant->id} ({$tenant->name}) → {$result['message']}");
-                continue;
-            }
+            foreach ($tenant->botPlatforms() as $platform) {
+                $label  = \App\Support\Messenger::label($platform);
+                $result = $bot->setWebhook($tenant, $platform);
 
-            $this->info("tenant#{$tenant->id} ({$tenant->name}) → {$result['url']}");
+                if (!$result['ok']) {
+                    $failed++;
+                    $this->error("tenant#{$tenant->id} ({$tenant->name}) [{$label}] → {$result['message']}");
+                    continue;
+                }
 
-            // چیزی که ما فرستادیم لزوماً چیزی نیست که روی بله نشسته؛ خودش را بپرس و نشان بده.
-            $registered = $bot->registeredWebhookUrl($tenant);
+                $this->info("tenant#{$tenant->id} ({$tenant->name}) [{$label}] → {$result['url']}");
 
-            if ($registered === null) {
-                $this->warn('   getWebhookInfo پاسخ نداد — آدرس ثبت‌شده روی بله قابل تایید نیست.');
-            } elseif ($registered === $result['url']) {
-                $this->line('   تایید شد: همین آدرس روی بله ثبت است.');
-            } else {
-                $failed++;
-                $this->error("   ناهماهنگ! آدرس ثبت‌شده روی بله: " . ($registered ?: '(خالی)'));
+                // چیزی که ما فرستادیم لزوماً چیزی نیست که روی پیام‌رسان نشسته؛ خودش را بپرس و نشان بده.
+                $registered = $bot->registeredWebhookUrl($tenant, $platform);
+
+                if ($registered === null) {
+                    $this->warn("   getWebhookInfo پاسخ نداد — آدرس ثبت‌شده روی {$label} قابل تایید نیست.");
+                } elseif ($registered === $result['url']) {
+                    $this->line("   تایید شد: همین آدرس روی {$label} ثبت است.");
+                } else {
+                    $failed++;
+                    $this->error("   ناهماهنگ! آدرس ثبت‌شده روی {$label}: " . ($registered ?: '(خالی)'));
+                }
             }
         }
 

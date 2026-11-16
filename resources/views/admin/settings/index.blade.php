@@ -3,11 +3,11 @@
 @section('content')
     <div class="mb-8 flex justify-between items-center">
         <div>
-            <h2 class="text-2xl font-bold text-gray-800">تنظیمات ربات بله</h2>
+            <h2 class="text-2xl font-bold text-gray-800">تنظیمات ربات</h2>
             <p class="text-sm text-gray-600 mt-1">مدیریت توکن، اتصال، پیام‌های پیش‌فرض و ترتیب مراحل</p>
         </div>
         <div>
-            @if($settings['bot_connected'] == '1')
+            @if($settings['bot_connected'] == '1' || $settings['telegram_connected'] == '1')
                 <span class="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-green-100 text-green-800">
                     <span class="size-1.5 inline-block bg-green-800 rounded-full"></span>
                     ربات متصل است
@@ -23,6 +23,7 @@
 
     <div class="grid lg:grid-cols-2 gap-6">
 
+        <div class="space-y-6">
         <!-- اتصال ربات -->
         <div class="bg-white border rounded-xl shadow-sm p-6">
             <h3 class="text-lg font-semibold text-gray-800 mb-4">اتصال به بله (Webhook)</h3>
@@ -64,6 +65,58 @@
             </div>
         </div>
 
+        <!-- اتصال ربات تلگرام -->
+        <div class="bg-white border rounded-xl shadow-sm p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-gray-800">اتصال به تلگرام (Webhook)</h3>
+                @if($settings['telegram_connected'] == '1')
+                    <span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-medium bg-green-100 text-green-800">متصل</span>
+                @else
+                    <span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">متصل نیست</span>
+                @endif
+            </div>
+            <p class="text-sm text-gray-600 mb-4 leading-6">
+                اختیاری است و کنار ربات بله کار می‌کند: نمایندگان می‌توانند از هر کدام گزارش بدهند و همه‌چیز همین‌جا جمع می‌شود.
+                توکن را از <span dir="ltr">@BotFather</span> بگیرید، در فرم کناری وارد و ذخیره کنید، بعد دکمه‌ی اتصال را بزنید.
+            </p>
+
+            <div class="mb-4 text-sm space-y-1">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">ربات</span>
+                    @if($settings['telegram_bot_username'])
+                        <a href="https://t.me/{{ $settings['telegram_bot_username'] }}" target="_blank" dir="ltr" class="text-blue-600">{{ '@' . $settings['telegram_bot_username'] }}</a>
+                    @else
+                        <span>—</span>
+                    @endif
+                </div>
+                <div>
+                    <span class="text-gray-500 block mb-1">آدرس وبهوک تلگرام</span>
+                    <input type="text" readonly dir="ltr" value="{{ $settings['telegram_webhook_url'] }}"
+                           class="py-2 px-3 block w-full border border-gray-200 rounded-lg text-xs bg-gray-50">
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <form action="{{ route('admin.settings.telegram.connect') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-sky-600 text-white hover:bg-sky-700">
+                        ارسال درخواست اتصال به تلگرام
+                    </button>
+                </form>
+
+                @if($settings['telegram_connected'] == '1' || $settings['telegram_bot_token'])
+                    <form action="{{ route('admin.settings.telegram.disconnect') }}" method="POST"
+                          onsubmit="return confirm('اتصال ربات تلگرام قطع و توکن آن پاک می‌شود. ربات بله دست نمی‌خورد. مطمئن هستید؟')">
+                        @csrf
+                        <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50">
+                            قطع اتصال تلگرام
+                        </button>
+                    </form>
+                @endif
+            </div>
+        </div>
+        </div>
+
         <!-- فرم تنظیمات -->
         <div class="bg-white border rounded-xl shadow-sm p-6">
             <h3 class="text-lg font-semibold text-gray-800 mb-4">ویرایش اطلاعات و پیام‌ها</h3>
@@ -71,8 +124,50 @@
                 @csrf
                 <div class="space-y-4">
                     <div>
-                        <label for="bot_token" class="block text-sm font-medium mb-2">توکن ربات (Bot Token)</label>
+                        <label for="bot_token" class="block text-sm font-medium mb-2">توکن ربات بله (Bot Token)</label>
                         <input type="text" id="bot_token" name="bot_token" value="{{ $settings['bot_token'] }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" placeholder="123456789:ABCdefGhI...">
+                    </div>
+                    <div>
+                        <label for="telegram_bot_token" class="block text-sm font-medium mb-2">توکن ربات تلگرام (اختیاری)</label>
+                        <input type="text" id="telegram_bot_token" name="telegram_bot_token" value="{{ old('telegram_bot_token', $settings['telegram_bot_token']) }}" class="py-3 px-4 block w-full border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-blue-500" dir="ltr" placeholder="123456789:AAH...">
+                        @error('telegram_bot_token')
+                            <p class="text-xs text-red-600 mt-1">قالب توکن تلگرام درست نیست (باید شبیه 123456789:AAH... باشد).</p>
+                        @enderror
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-100">
+                        <label for="ai_enabled" class="flex items-start gap-3 cursor-pointer">
+                            <input type="hidden" name="ai_enabled" value="0">
+                            <input type="checkbox"
+                                   id="ai_enabled"
+                                   name="ai_enabled"
+                                   value="1"
+                                   onchange="document.getElementById('ai-wrap').classList.toggle('hidden', !this.checked)"
+                                   {{ $settings['ai_enabled'] == '1' ? 'checked' : '' }}
+                                   class="mt-0.5 shrink-0 size-4 border-gray-300 rounded text-blue-600 focus:ring-blue-500">
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800">دستیار هوشمند (هوش مصنوعی)</span>
+                                <span class="block text-xs text-gray-500 mt-0.5 leading-6">
+                                    دکمه‌ی «گفتگو با دستیار هوشمند» به منوی اصلی ربات (بله و تلگرام) اضافه می‌شود.
+                                    هر نماینده با زدنش وارد گفتگو می‌شود و با «بازگشت به منو» بیرون می‌آید؛ ثبت گزارش دست نمی‌خورد.
+                                    دستیار گفتگوهای قبلی هر نفر را به خاطر دارد و هر نفر روزانه سقف پرسش دارد.
+                                </span>
+                            </span>
+                        </label>
+
+                        @unless($settings['ai_configured'])
+                            <p class="mt-2 pr-7 text-xs text-red-700 leading-6">
+                                کلید OpenAI روی سرور تنظیم نشده؛ تا مدیر نصب آن را اضافه نکند، این دکمه در ربات دیده نمی‌شود.
+                            </p>
+                        @endunless
+
+                        <div id="ai-wrap" class="mt-3 pr-7 {{ $settings['ai_enabled'] == '1' ? '' : 'hidden' }}">
+                            <label for="ai_system_prompt" class="block text-xs font-medium text-gray-600 mb-1">نقش و دستورالعمل دستیار (اختیاری)</label>
+                            <textarea id="ai_system_prompt" name="ai_system_prompt" rows="4"
+                                      class="py-2 px-3 block w-full border border-gray-200 rounded-lg text-sm"
+                                      placeholder="مثلاً: تو دستیار نمایندگان استانی حوزه هنری هستی. درباره‌ی نحوه‌ی ثبت گزارش و مهلت‌ها راهنمایی کن.">{{ $settings['ai_system_prompt'] }}</textarea>
+                            <p class="text-xs text-gray-500 mt-1">خالی بماند، متن پیش‌فرض استفاده می‌شود.</p>
+                        </div>
                     </div>
                     <div class="rounded-lg border {{ $smsStatus['is_log'] || !$smsStatus['configured'] ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50' }} p-4">
                         <p class="text-sm font-semibold {{ $smsStatus['is_log'] || !$smsStatus['configured'] ? 'text-red-900' : 'text-emerald-900' }} mb-1">

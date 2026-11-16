@@ -38,7 +38,9 @@ class BroadcastMessage extends Model
     /** نمایندگان گیرنده (متصل به ربات + فیلتر استان) */
     public function recipientsQuery()
     {
-        $q = Representative::whereNotNull('chat_id')->where('is_connected', true);
+        // در بله یا تلگرام (یا هر دو) وصل باشد
+        $q = Representative::where(fn ($w) => $w->whereNotNull('chat_id')->orWhereNotNull('telegram_chat_id'))
+            ->where('is_connected', true);
         if (!empty($this->province_ids)) {
             $q->whereIn('province_id', $this->province_ids);
         }

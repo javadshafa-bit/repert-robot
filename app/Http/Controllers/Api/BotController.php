@@ -17,6 +17,9 @@ use App\Models\Setting;
 use App\Models\Tenant;
 use App\Support\BotText;
 use App\Support\JalaliCalendar;
+use App\Support\Messenger;
+use App\Services\Ai\AiAssistant;
+use App\Services\Ai\AiMemoryService;
 use App\Support\Sms\SmsSender;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
@@ -36,6 +39,9 @@ class BotController extends Controller
     private $apiUrl;
     private ?Tenant $tenant = null;
 
+    /** پیام‌رسانی که این آپدیت از آن آمده (bale | telegram) */
+    private string $platform = Messenger::BALE;
+
     /**
      * وبهوک اختصاصی یک مستأجر.
      * مستأجر از روی webhook_secret موجود در مسیر (route model binding) پیدا می‌شود؛
@@ -43,16 +49,38 @@ class BotController extends Controller
      */
     public function handle(Request $request, Tenant $tenant)
     {
-        // مستأجر تاییدنشده/معلق یا بدون توکن: هیچ پردازشی نه، ولی به بله OK بده
-        // تا آپدیت را بارها دوباره نفرستد.
-        if (!$tenant->botIsUsable()) {
-            Log::info("bot webhook ignored for tenant#{$tenant->id} (status={$tenant->status})");
+        return $this->handlePlatform($request, $tenant, Messenger::BALE);
+    }
+
+    /**
+     * وبهوک ربات تلگرام همان سازمان. منطق کاملاً مشترک است؛ فقط آدرس API و
+     * فضای شناسه‌ی چت فرق می‌کند (App\Support\Messenger).
+     */
+    public function handleTelegram(Request $request, Tenant $tenant)
+    {
+        // تلگرام رمزی را که هنگام setWebhook دادیم در این هدر برمی‌گرداند؛
+        // بدون آن هر کسی که آدرس را بداند می‌تواند آپدیت جعلی بفرستد.
+        $given = (string) $request->header('X-Telegram-Bot-Api-Secret-Token', '');
+        if (!hash_equals($tenant->telegramSecretToken(), $given)) {
+            return response('Forbidden', 403);
+        }
+
+        return $this->handlePlatform($request, $tenant, Messenger::TELEGRAM);
+    }
+
+    private function handlePlatform(Request $request, Tenant $tenant, string $platform)
+    {
+        // مستأجر تاییدنشده/معلق یا بدون توکن: هیچ پردازشی نه، ولی OK بده
+        // تا پیام‌رسان آپدیت را بارها دوباره نفرستد.
+        if (!$tenant->botIsUsable($platform)) {
+            Log::info("bot webhook ignored for tenant#{$tenant->id} platform={$platform} (status={$tenant->status})");
             return response('OK', 200);
         }
 
-        $this->tenant = $tenant;
-        $this->token  = $tenant->bot_token;
-        $this->apiUrl = "https://tapi.bale.ai/bot{$this->token}/";
+        $this->tenant   = $tenant;
+        $this->platform = $platform;
+        $this->token    = $tenant->tokenFor($platform);
+        $this->apiUrl   = Messenger::apiUrl($platform, $this->token);
 
         // مستأجر درخواست قبلی نباید نشت کند (Octane / queue worker) — قبل از set پاک کن.
         TenantContext::forget();
@@ -104,7 +132,7 @@ class BotController extends Controller
 
     private function processMessage($message)
     {
-        $chatId   = $message['chat']['id'];
+        $chatId   = $this->chatKey($message['chat']['id']);
         $text     = $message['text'] ?? null;
         $photo    = $message['photo'] ?? null;
         $document = $message['document'] ?? null;
@@ -147,18 +175,9 @@ class BotController extends Controller
             if ($text) return $isEditing ? $this->saveEditedAnswer($chatId, $text, $state) : $this->saveAnswerAndContinue($chatId, $text, $state);
         }
 
-        // دستیار هوش مصنوعی: فقط در حالت idle و فقط برای متن آزاد (نه دستور).
-        // وسط پر کردن فرم گزارش هرگز به اینجا نمی‌رسیم، چون شاخه‌ی بالا return می‌کند.
-        if ($state->step === 'idle' && $text !== null && trim($text) !== '' && \App\Services\Ai\AiAssistant::enabled()) {
-            if (trim($text) === '/forget') {
-                app(\App\Services\Ai\AiMemoryService::class)->forget((string) $chatId);
-                return $this->sendMessage($chatId, 'حافظه‌ی گفتگوی شما پاک شد.');
-            }
-            if (!str_starts_with(trim($text), '/')) {
-                $repName = \App\Models\Representative::find($state->representative_id)?->full_name;
-                $answer  = app(\App\Services\Ai\AiAssistant::class)->reply((string) $chatId, $text, $repName);
-                return $this->sendMessage($chatId, $answer);
-            }
+        // حالت گفتگو با دستیار هوشمند: کاربر خودش با دکمه‌ی منو واردش شده
+        if ($state->step === 'ai_chat') {
+            return $this->handleAiChatMessage($chatId, $state, $text);
         }
 
         $this->showMainMenu($chatId);
@@ -166,7 +185,7 @@ class BotController extends Controller
 
     private function processEditedMessage($message)
     {
-        $chatId = $message['chat']['id'];
+        $chatId = $this->chatKey($message['chat']['id']);
         $text   = $message['text'] ?? null;
         $photo  = $message['photo'] ?? null;
         $state  = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
@@ -202,8 +221,14 @@ class BotController extends Controller
 
     private function processCallback($callbackQuery)
     {
-        $chatId = $callbackQuery['message']['chat']['id'];
+        $chatId = $this->chatKey($callbackQuery['message']['chat']['id']);
         $data   = $callbackQuery['data'];
+
+        // تلگرام تا جواب نگیرد روی دکمه چرخ‌دنده‌ی «در حال بارگذاری» نشان می‌دهد
+        if ($this->platform === Messenger::TELEGRAM && isset($callbackQuery['id'])) {
+            $this->botHttp(5)->post($this->apiUrl . 'answerCallbackQuery', ['callback_query_id' => $callbackQuery['id']]);
+        }
+
         $state  = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
         if (!$state || !$state->representative_id) return;
 
@@ -211,9 +236,17 @@ class BotController extends Controller
         if ($this->surveyMode() && !$this->surveyCallbackAllowed($data)) return;
 
         if ($data === 'main_start_report') {
-            if ($state->step !== 'idle') { $this->sendMessage($chatId, BotText::get('warn_finish_current')); return; }
+            // از گفتگوی دستیار هم می‌شود مستقیم سراغ گزارش رفت
+            if (!in_array($state->step, ['idle', 'ai_chat'])) { $this->sendMessage($chatId, BotText::get('warn_finish_current')); return; }
             $this->deleteTrackedMessage($chatId, $state);
             $this->startReportFlow($chatId, $state);
+
+        } elseif ($data === 'ai_chat_start') {
+            if (!in_array($state->step, ['idle', 'ai_chat'])) { $this->sendMessage($chatId, BotText::get('warn_finish_current')); return; }
+            $this->startAiChat($chatId, $state);
+
+        } elseif ($data === 'ai_chat_exit') {
+            if ($state->step === 'ai_chat') $this->showMainMenu($chatId);
 
         } elseif (str_starts_with($data, 'month_')) {
             $state->update(['jalali_month' => str_replace('month_', '', $data)]);
@@ -501,7 +534,7 @@ class BotController extends Controller
      */
     private function resolveOpenAccessRep(string $chatId, array $from): ?Representative
     {
-        $existing = Representative::where('chat_id', $chatId)->first();
+        $existing = Representative::where($this->repChatColumn(), $chatId)->first();
         if ($existing) {
             if (!$existing->is_connected) $existing->update(['is_connected' => true]);
             return $existing;
@@ -526,7 +559,7 @@ class BotController extends Controller
             'first_name'   => mb_substr($first !== '' ? $first : 'کاربر', 0, 100),
             'last_name'    => mb_substr($last  !== '' ? $last  : '—',     0, 100),
             'phone_number' => null,
-            'chat_id'      => $chatId,
+            $this->repChatColumn() => $chatId,
             'is_connected' => true,
         ]);
     }
@@ -722,11 +755,7 @@ class BotController extends Controller
      */
     private function linkRepresentative(string $chatId, BotState $state, Representative $rep): void
     {
-        Representative::where('chat_id', $chatId)
-            ->where('id', '!=', $rep->id)
-            ->update(['chat_id' => null, 'is_connected' => false]);
-
-        $rep->update(['chat_id' => $chatId, 'is_connected' => true]);
+        $this->attachChatToRepresentative($chatId, $rep);
         $state->update(['representative_id' => $rep->id, 'step' => 'idle', 'auth_data' => null]);
 
         $this->sendMessage($chatId, BotText::get('auth_success', $this->repVars($rep)), ['remove_keyboard' => true]);
@@ -799,7 +828,11 @@ class BotController extends Controller
 
     private function showMainMenu(string $chatId): void
     {
-        $keyboard = ['inline_keyboard' => [[['text' => BotText::get('btn_new_report'), 'callback_data' => 'main_start_report']]]];
+        $rows = [[['text' => BotText::get('btn_new_report'), 'callback_data' => 'main_start_report']]];
+        if (AiAssistant::enabled()) {
+            $rows[] = [['text' => BotText::get('btn_ai_chat'), 'callback_data' => 'ai_chat_start']];
+        }
+        $keyboard = ['inline_keyboard' => $rows];
         $msgId    = $this->sendMessage($chatId, BotText::get('main_menu_prompt'), $keyboard);
         BotState::where('chat_id', $chatId)->update(['step' => 'idle', 'last_message_id' => $msgId]);
     }
@@ -1271,8 +1304,8 @@ class BotController extends Controller
     {
         if (!$state->last_message_id) return;
 
-        Http::post($this->apiUrl . 'editMessageText', [
-            'chat_id'      => $chatId,
+        $this->botHttp()->post($this->apiUrl . 'editMessageText', [
+            'chat_id'      => Messenger::rawChatId($chatId),
             'message_id'   => $state->last_message_id,
             'text'         => $text,
             'parse_mode'   => 'Markdown',
@@ -1385,17 +1418,116 @@ class BotController extends Controller
         };
     }
 
+    // ==========================================
+    // Messenger (بله / تلگرام)
+    // ==========================================
+
+    private function chatKey(int|string $rawChatId): string
+    {
+        return Messenger::chatKey($this->platform, $rawChatId);
+    }
+
+    /** ستون شناسه‌ی چت در representatives برای پیام‌رسان جاری */
+    private function repChatColumn(): string
+    {
+        return Messenger::repColumn($this->platform);
+    }
+
+    private function botHttp(int $timeout = 20): \Illuminate\Http\Client\PendingRequest
+    {
+        return Messenger::http($this->platform, $timeout);
+    }
+
+    /**
+     * این چت را به نماینده وصل می‌کند.
+     *
+     * شناسه‌ی چت در هر سازمان یکتاست، پس اگر نماینده‌ی دیگری همین چت را داشت
+     * اول رهایش می‌کنیم. اتصال آن نماینده در پیام‌رسان دیگر دست نمی‌خورد؛
+     * فقط اگر دیگر به هیچ‌کدام وصل نباشد is_connected خاموش می‌شود.
+     */
+    private function attachChatToRepresentative(string $chatId, Representative $rep): void
+    {
+        $column = $this->repChatColumn();
+
+        Representative::where($column, $chatId)
+            ->where('id', '!=', $rep->id)
+            ->get()
+            ->each(function (Representative $other) use ($column) {
+                $other->{$column}   = null;
+                $other->is_connected = filled($other->chat_id) || filled($other->telegram_chat_id);
+                $other->save();
+            });
+
+        $rep->update([$column => $chatId, 'is_connected' => true]);
+    }
+
+    // ==========================================
+    // دستیار هوشمند
+    // ==========================================
+
+    private function aiChatKeyboard(): array
+    {
+        return ['inline_keyboard' => [[['text' => BotText::get('btn_ai_exit'), 'callback_data' => 'ai_chat_exit']]]];
+    }
+
+    private function startAiChat(string $chatId, BotState $state): void
+    {
+        if (!AiAssistant::enabled()) {
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        $this->deleteTrackedMessage($chatId, $state);
+        $state->update(['step' => 'ai_chat']);
+        $this->sendMessage($chatId, BotText::get('ai_chat_intro'), $this->aiChatKeyboard());
+    }
+
+    private function handleAiChatMessage(string $chatId, BotState $state, ?string $text): void
+    {
+        // مدیر وسط گفتگو خاموشش کرده
+        if (!AiAssistant::enabled()) {
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        $text = $text !== null ? trim($text) : '';
+
+        if ($text === '') {
+            $this->sendMessage($chatId, BotText::get('ai_chat_text_only'), $this->aiChatKeyboard());
+            return;
+        }
+
+        if ($text === '/forget') {
+            app(AiMemoryService::class)->forget($chatId);
+            $this->sendMessage($chatId, BotText::get('ai_chat_forgotten'), $this->aiChatKeyboard());
+            return;
+        }
+
+        $repName = Representative::find($state->representative_id)?->full_name;
+        $answer  = app(AiAssistant::class)->reply($chatId, $text, $repName);
+        $this->sendMessage($chatId, $answer, $this->aiChatKeyboard());
+    }
+
     private function sendMessage(string $chatId, string $text, $replyMarkup = null): ?int
     {
-        $data = ['chat_id' => $chatId, 'text' => $text, 'parse_mode' => 'Markdown'];
+        $data = ['chat_id' => Messenger::rawChatId($chatId), 'text' => $text, 'parse_mode' => 'Markdown'];
         if ($replyMarkup) $data['reply_markup'] = json_encode($replyMarkup);
-        $response = Http::post($this->apiUrl . 'sendMessage', $data);
+        try {
+            $response = $this->botHttp()->post($this->apiUrl . 'sendMessage', $data);
+        } catch (\Throwable $e) {
+            Log::warning("sendMessage failed ({$this->platform}): {$e->getMessage()}");
+            return null;
+        }
         return $response->json()['result']['message_id'] ?? null;
     }
 
     private function deleteMessage(string $chatId, int $messageId): void
     {
-        Http::post($this->apiUrl . 'deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
+        try {
+            $this->botHttp()->post($this->apiUrl . 'deleteMessage', ['chat_id' => Messenger::rawChatId($chatId), 'message_id' => $messageId]);
+        } catch (\Throwable $e) {
+            Log::warning("deleteMessage failed ({$this->platform}): {$e->getMessage()}");
+        }
     }
 
     private function deleteTrackedMessage(string $chatId, BotState $state): void
@@ -1405,12 +1537,12 @@ class BotController extends Controller
 
     private function downloadFile(string $fileId, string $originalName): ?string
     {
-        $response = Http::post($this->apiUrl . 'getFile', ['file_id' => $fileId]);
+        $response = $this->botHttp(30)->post($this->apiUrl . 'getFile', ['file_id' => $fileId]);
         $fileData = $response->json();
         if (isset($fileData['result']['file_path'])) {
             $remotePath  = $fileData['result']['file_path'];
-            $fileUrl     = "https://tapi.bale.ai/file/bot{$this->token}/" . $remotePath;
-            $fileContent = Http::get($fileUrl)->body();
+            $fileUrl     = Messenger::fileUrl($this->platform, $this->token, $remotePath);
+            $fileContent = $this->botHttp(60)->get($fileUrl)->body();
             $extension   = pathinfo($remotePath, PATHINFO_EXTENSION) ?: pathinfo($originalName, PATHINFO_EXTENSION) ?: 'bin';
             // فایل‌ها روی دیسک public سرو می‌شوند؛ مسیر هر سازمان جداست و نام فایل
             // به‌جای uniqid (که زمان‌محور و قابل حدس است) تصادفی ساخته می‌شود.

@@ -55,6 +55,7 @@ class AiAssistant
 
             // ۴) پاسخ مدل
             $answer = $this->client->chat($messages);
+            $answer = $this->toBaleMarkdown($answer);
             if ($answer === '') {
                 $answer = 'متأسفم، پاسخی آماده نشد. لطفاً دوباره بپرسید.';
             }
@@ -96,6 +97,29 @@ class AiAssistant
         }
 
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * BotController با parse_mode=Markdown (نسخه‌ی قدیمی) می‌فرستد: پررنگ = *متن*، کج = _متن_.
+     * مدل‌ها معمولاً **متن**، تیتر # و ` می‌نویسند؛ و هر * یا _ جفت‌نشده باعث می‌شود
+     * پیام کلاً رد شود. اینجا خروجی را به قالب امن تبدیل می‌کنیم.
+     */
+    protected function toBaleMarkdown(string $text): string
+    {
+        $text = preg_replace('/\*\*(.+?)\*\*/su', '*$1*', $text);     // **x** → *x*
+        $text = preg_replace('/__(.+?)__/su', '_$1_', $text);         // __x__ → _x_
+        $text = preg_replace('/^\s{0,3}#{1,6}\s*/mu', '', $text);      // تیترها
+        $text = str_replace(['`', '[', ']'], '', $text);              // کد و لینک‌های markdown
+
+        // اگر هنوز * یا _ فرد مانده، قالب‌بندی قابل اعتماد نیست → همه را حذف کن
+        if (substr_count($text, '*') % 2 !== 0) {
+            $text = str_replace('*', '', $text);
+        }
+        if (substr_count($text, '_') % 2 !== 0) {
+            $text = str_replace('_', '', $text);
+        }
+
+        return trim($text);
     }
 
     protected function safeEmbed(string $text): ?array

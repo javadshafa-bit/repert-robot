@@ -9,7 +9,7 @@ class Representative extends Model {
 
     protected $fillable = [
         'province_id','first_name','last_name','personnel_code',
-        'phone_number','chat_id','is_connected',
+        'phone_number','chat_id','telegram_chat_id','is_connected',
     ];
 
     public function province() {

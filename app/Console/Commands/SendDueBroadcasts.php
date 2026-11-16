@@ -20,7 +20,7 @@ class SendDueBroadcasts extends Command
         // این دستور با کرون اجرا می‌شود و کاربر لاگین‌شده‌ای ندارد؛
         // پس باید روی هر مستأجر جداگانه لوپ بزند و TenantContext را خودش ست کند.
         $tenants = Tenant::where('status', Tenant::STATUS_ACTIVE)
-            ->whereNotNull('bot_token')
+            ->withAnyBot()
             ->get();
 
         foreach ($tenants as $tenant) {

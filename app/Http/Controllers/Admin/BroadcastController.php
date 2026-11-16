@@ -19,7 +19,8 @@ class BroadcastController extends Controller
     public function index()
     {
         $messages = BroadcastMessage::with('creator')->latest()->paginate(15);
-        $connectedCount = Representative::whereNotNull('chat_id')->where('is_connected', true)->count();
+        $connectedCount = Representative::where(fn ($w) => $w->whereNotNull('chat_id')->orWhereNotNull('telegram_chat_id'))
+            ->where('is_connected', true)->count();
 
         return view('admin.broadcasts.index', compact('messages', 'connectedCount'));
     }

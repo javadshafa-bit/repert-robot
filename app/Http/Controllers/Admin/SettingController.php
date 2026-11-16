@@ -7,6 +7,7 @@ use App\Models\Province;
 use App\Models\Setting;
 use App\Models\Tenant;
 use App\Services\BotConnector;
+use App\Support\Messenger;
 use App\Support\Sms\SmsManager;
 use App\Support\TenantContext;
 use App\Support\TenantRule;
@@ -35,6 +36,14 @@ class SettingController extends Controller
             'bot_connected'   => $tenant->bot_connected_at ? '1' : '0',
             'bot_username'    => $tenant->bot_username,
             'webhook_url'     => $tenant->webhookUrl(),
+            'telegram_bot_token'    => $tenant->telegram_bot_token,
+            'telegram_connected'    => $tenant->telegram_connected_at ? '1' : '0',
+            'telegram_bot_username' => $tenant->telegram_bot_username,
+            'telegram_webhook_url'  => $tenant->telegramWebhookUrl(),
+            'ai_enabled'         => Setting::get('ai_enabled', '0'),
+            'ai_system_prompt'   => Setting::get('ai_system_prompt', ''),
+            // کلید OpenAI سطح نصب است (env)، نه سازمان؛ فقط نشان می‌دهیم تنظیم شده یا نه
+            'ai_configured'      => filled(config('ai.api_key')),
             'require_representative_phone' => Setting::get('require_representative_phone', '1'),
             'bot_open_access'    => Setting::get('bot_open_access', '0'),
             'open_access_phone_mode' => Setting::get('open_access_phone_mode', 'none'),
@@ -69,6 +78,9 @@ class SettingController extends Controller
     {
         $request->validate([
             'bot_token'       => 'nullable|string|max:255',
+            'telegram_bot_token' => ['nullable', 'string', 'max:255', 'regex:/^\d+:[A-Za-z0-9_-]+$/'],
+            'ai_enabled'       => 'nullable|boolean',
+            'ai_system_prompt' => 'nullable|string|max:4000',
             'require_representative_phone' => 'nullable|boolean',
             'bot_open_access'   => 'nullable|boolean',
             'open_access_phone_mode' => 'nullable|string|in:none,optional,required',
@@ -85,6 +97,22 @@ class SettingController extends Controller
         if ($request->filled('bot_token')) {
             $this->tenant()->forceFill(['bot_token' => trim($request->bot_token)])->save();
         }
+
+        if ($request->filled('telegram_bot_token')) {
+            $tenant   = $this->tenant();
+            $newToken = trim($request->telegram_bot_token);
+            // توکن عوض شد → اتصال قبلی دیگر معتبر نیست تا دوباره «اتصال» زده شود
+            if ($newToken !== $tenant->telegram_bot_token) {
+                $tenant->forceFill([
+                    'telegram_bot_token'    => $newToken,
+                    'telegram_connected_at' => null,
+                    'telegram_bot_username' => null,
+                ])->save();
+            }
+        }
+
+        Setting::set('ai_enabled', $request->boolean('ai_enabled') ? '1' : '0');
+        Setting::set('ai_system_prompt', trim((string) $request->input('ai_system_prompt', '')));
 
         Setting::set('require_representative_phone', $request->boolean('require_representative_phone') ? '1' : '0');
         Setting::set('bot_open_access', $request->boolean('bot_open_access') ? '1' : '0');
@@ -176,24 +204,43 @@ class SettingController extends Controller
     /** ثبت وبهوک اختصاصی این سازمان روی بله */
     public function connect()
     {
-        $tenant = $this->tenant();
-
-        if (!$tenant->bot_token) {
-            return back()->with('error', 'ابتدا توکن ربات را وارد کنید.');
-        }
-
-        $result = $this->bot->setWebhook($tenant);
-
-        return $result['ok']
-            ? back()->with('success', $result['message'])
-            : back()->with('error', 'خطا در اتصال: ' . $result['message']);
+        return $this->connectPlatform(Messenger::BALE);
     }
 
     /** قطع اتصال ربات: حذف وبهوک روی بله + پاک کردن توکن */
     public function disconnect()
     {
-        $this->bot->disconnect($this->tenant());
+        $this->bot->disconnect($this->tenant(), Messenger::BALE);
 
-        return back()->with('success', 'اتصال ربات قطع شد.');
+        return back()->with('success', 'اتصال ربات بله قطع شد.');
+    }
+
+    /** ثبت وبهوک اختصاصی این سازمان روی تلگرام */
+    public function connectTelegram()
+    {
+        return $this->connectPlatform(Messenger::TELEGRAM);
+    }
+
+    /** قطع اتصال ربات تلگرام: حذف وبهوک + پاک کردن توکن تلگرام (ربات بله دست نمی‌خورد) */
+    public function disconnectTelegram()
+    {
+        $this->bot->disconnect($this->tenant(), Messenger::TELEGRAM);
+
+        return back()->with('success', 'اتصال ربات تلگرام قطع شد.');
+    }
+
+    private function connectPlatform(string $platform)
+    {
+        $tenant = $this->tenant();
+
+        if (!$tenant->tokenFor($platform)) {
+            return back()->with('error', 'ابتدا توکن ربات ' . Messenger::label($platform) . ' را وارد و ذخیره کنید.');
+        }
+
+        $result = $this->bot->setWebhook($tenant, $platform);
+
+        return $result['ok']
+            ? back()->with('success', $result['message'])
+            : back()->with('error', 'خطا در اتصال: ' . $result['message']);
     }
 }

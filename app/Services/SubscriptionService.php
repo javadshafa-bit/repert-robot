@@ -133,7 +133,7 @@ class SubscriptionService
      */
     private function syncBot(Tenant $tenant, string $previousStatus): void
     {
-        if (!$tenant->bot_token) {
+        if (!$tenant->hasAnyBotToken()) {
             return;
         }
 
@@ -141,13 +141,13 @@ class SubscriptionService
         $isUsable  = $tenant->status === Tenant::STATUS_ACTIVE;
 
         if ($wasUsable && !$isUsable) {
-            $this->bot->deleteWebhook($tenant);
+            $this->bot->deleteAllWebhooks($tenant);
 
             return;
         }
 
         if (!$wasUsable && $isUsable) {
-            $this->bot->setWebhook($tenant);
+            $this->bot->setAllWebhooks($tenant);
         }
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Messenger;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -23,19 +24,21 @@ class Tenant extends Model
     protected $fillable = [
         'name', 'owner_name', 'owner_phone', 'email', 'status',
         'bot_token', 'bot_username', 'webhook_secret', 'bot_connected_at',
+        'telegram_bot_token', 'telegram_bot_username', 'telegram_connected_at',
         'subscription_ends_at', 'is_unlimited', 'trial_ends_at',
         'suspended_at', 'suspended_reason',
     ];
 
     protected $casts = [
         'bot_connected_at'     => 'datetime',
+        'telegram_connected_at' => 'datetime',
         'subscription_ends_at' => 'datetime',
         'trial_ends_at'        => 'datetime',
         'suspended_at'         => 'datetime',
         'is_unlimited'         => 'boolean',
     ];
 
-    protected $hidden = ['bot_token', 'webhook_secret'];
+    protected $hidden = ['bot_token', 'telegram_bot_token', 'webhook_secret'];
 
     public static function statusLabels(): array
     {
@@ -171,18 +174,67 @@ class Tenant extends Model
         return route('bot.webhook', $this->ensureWebhookSecret());
     }
 
-    public function botApiUrl(): ?string
+    /** آدرس وبهوک ربات تلگرام همین سازمان (همان secret، مسیر جدا) */
+    public function telegramWebhookUrl(): string
     {
-        return $this->bot_token ? "https://tapi.bale.ai/bot{$this->bot_token}/" : null;
+        return route('bot.webhook.telegram', $this->ensureWebhookSecret());
     }
 
     /**
-     * ربات این سازمان حق کار کردن دارد؟
+     * رمزی که تلگرام در هدر X-Telegram-Bot-Api-Secret-Token برمی‌گرداند.
+     * از webhook_secret و APP_KEY مشتق می‌شود، پس جایی ذخیره نمی‌شود و با
+     * عوض شدن هر کدام، وبهوک قبلی خودبه‌خود بی‌اعتبار می‌شود.
+     */
+    public function telegramSecretToken(): string
+    {
+        return hash_hmac('sha256', 'telegram|' . $this->ensureWebhookSecret(), (string) config('app.key'));
+    }
+
+    /** توکن ربات این سازمان روی یک پیام‌رسان */
+    public function tokenFor(string $platform): ?string
+    {
+        $token = $platform === Messenger::TELEGRAM ? $this->telegram_bot_token : $this->bot_token;
+
+        return filled($token) ? $token : null;
+    }
+
+    public function botApiUrl(string $platform = Messenger::BALE): ?string
+    {
+        $token = $this->tokenFor($platform);
+
+        return $token ? Messenger::apiUrl($platform, $token) : null;
+    }
+
+    /** پیام‌رسان‌هایی که این سازمان برایشان توکن دارد */
+    public function botPlatforms(): array
+    {
+        return array_values(array_filter(Messenger::ALL, fn ($p) => $this->tokenFor($p) !== null));
+    }
+
+    public function hasAnyBotToken(): bool
+    {
+        return $this->botPlatforms() !== [];
+    }
+
+    /**
+     * ربات این سازمان روی این پیام‌رسان حق کار کردن دارد؟
      * با تمام شدن اشتراک، ربات هم می‌خوابد — نه فقط پنل.
      */
-    public function botIsUsable(): bool
+    public function botIsUsable(string $platform = Messenger::BALE): bool
     {
-        return $this->hasActiveSubscription() && !empty($this->bot_token);
+        return $this->hasActiveSubscription() && $this->tokenFor($platform) !== null;
+    }
+
+    /** دست‌کم یکی از ربات‌ها قابل استفاده است؟ */
+    public function anyBotIsUsable(): bool
+    {
+        return $this->hasActiveSubscription() && $this->hasAnyBotToken();
+    }
+
+    /** محدود کردن کوئری به سازمان‌هایی که دست‌کم یک توکن ربات دارند */
+    public function scopeWithAnyBot($query)
+    {
+        return $query->where(fn ($q) => $q->whereNotNull('bot_token')->orWhereNotNull('telegram_bot_token'));
     }
 
     /**

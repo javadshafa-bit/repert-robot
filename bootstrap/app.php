@@ -31,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->preventRequestForgery(except: [
             'api/bot/webhook',
             'api/bot/webhook/*',
+            'api/bot/telegram/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

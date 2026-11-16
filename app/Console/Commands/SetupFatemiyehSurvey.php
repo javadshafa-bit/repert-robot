@@ -87,10 +87,15 @@ class SetupFatemiyehSurvey extends Command
             }
 
             $this->newLine();
-            if (!$tenant->bot_token) {
+            if (!$tenant->hasAnyBotToken()) {
                 $this->warn('این سازمان هنوز توکن ربات ندارد: پنل ← تنظیمات ← توکن ربات ← اتصال.');
-            } elseif ($tenant->bot_username) {
-                $this->info('لینک ربات برای QR: https://ble.ir/' . $tenant->bot_username);
+            } else {
+                if ($tenant->bot_username) {
+                    $this->info('لینک ربات بله برای QR: https://ble.ir/' . $tenant->bot_username);
+                }
+                if ($tenant->telegram_bot_username) {
+                    $this->info('لینک ربات تلگرام برای QR: https://t.me/' . $tenant->telegram_bot_username);
+                }
             }
         });
 

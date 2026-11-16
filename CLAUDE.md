@@ -142,6 +142,26 @@ database/migrations/    — تاریخچه کامل migrations
 - راه‌اندازی آماده‌ی «تئاتر فاطمیه»: `php artisan survey:fatemiyeh {tenant-id|email}` (تکرارش امن است).
 - وقتی خاموش است، رفتار ربات دقیقاً همان قبلی است.
 
+## تلگرام در کنار بله
+هر سازمان می‌تواند هم‌زمان ربات بله و ربات تلگرام داشته باشد؛ منطق ربات کاملاً مشترک است.
+- همه‌ی تفاوت‌ها در `App\Support\Messenger` است (آدرس API، لینک فایل، پروکسی).
+- **کلید چت:** شناسه‌ی تلگرام در دیتابیس با پیشوند `tg:` ذخیره می‌شود (`bot_states`، `otp_codes`، `ai_memories`)؛
+  بله بدون پیشوند (داده‌ی قبلی دست نخورده). فقط لحظه‌ی صدا زدن API با `Messenger::rawChatId()` برمی‌گردد.
+- نماینده: `chat_id` = بله، `telegram_chat_id` = تلگرام؛ وصل شدن در یکی دیگری را پاک نمی‌کند
+  (`BotController::attachChatToRepresentative`). پیام همگانی به هر دو می‌رود.
+- `tenants.telegram_bot_token / telegram_bot_username / telegram_connected_at`.
+- وبهوک: `POST /api/bot/telegram/{tenant:webhook_secret}` → `BotController::handleTelegram`؛ هدر
+  `X-Telegram-Bot-Api-Secret-Token` باید برابر `Tenant::telegramSecretToken()` باشد (هنگام setWebhook فرستاده می‌شود).
+- `BotConnector`ها پارامتر `$platform` دارند (پیش‌فرض بله). `tenants:refresh-webhook` هر دو را ثبت می‌کند.
+- اگر سرور به `api.telegram.org` نمی‌رسد: `TELEGRAM_PROXY` در `.env.docker`.
+
+## دستیار هوشمند (OpenAI + حافظه‌ی RAG)
+- کد در `app/Services/Ai/*` و `config/ai.php`؛ جدول `ai_memories`. راهنمای کامل: `AI-INSTALL.md`.
+- کلید `OPENAI_API_KEY` سطح نصب است و در `.env.docker` (نه `.env`) قرار می‌گیرد.
+- روشن/خاموش per-tenant: تیک «دستیار هوشمند» در تنظیمات (`settings.ai_enabled`، `ai_system_prompt`).
+- در ربات: دکمه‌ی «گفتگو با دستیار هوشمند» در منوی اصلی → step `ai_chat` → «بازگشت به منو» (`ai_chat_exit`).
+  متن آزاد بیرون از این حالت به هوش مصنوعی نمی‌رود. `/forget` حافظه‌ی همان چت را پاک می‌کند.
+
 ## چندمستأجری (Multi-tenant)
 سامانه SaaS است: هر سازمان یک رکورد در `tenants` دارد با ربات، داده و پنل مستقل.
 

@@ -43,7 +43,7 @@ class DashboardController extends Controller
             ->orderBy('subscription_ends_at')
             ->get();
 
-        $connectedBots = Tenant::whereNotNull('bot_connected_at')->count();
+        $connectedBots = Tenant::where(fn ($q) => $q->whereNotNull('bot_connected_at')->orWhereNotNull('telegram_connected_at'))->count();
 
         // داده‌ی سازمان منقضی حذف نمی‌شود؛ فقط بعد از شش ماه به سوپرادمین یادآوری می‌شود.
         $purgeCandidates = Tenant::where('status', Tenant::STATUS_EXPIRED)
