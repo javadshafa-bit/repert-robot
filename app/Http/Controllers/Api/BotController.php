@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\SurveyFlow;
 use App\Http\Controllers\Controller;
 use App\Models\BotState;
 use App\Models\Category;
@@ -29,6 +30,8 @@ use Morilog\Jalali\Jalalian;
 
 class BotController extends Controller
 {
+    use SurveyFlow;
+
     private $token;
     private $apiUrl;
     private ?Tenant $tenant = null;
@@ -109,6 +112,12 @@ class BotController extends Controller
         BotState::firstOrCreate(['chat_id' => $chatId]);
         $state = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
 
+        // حالت نظرسنجی کل جریان پیام را خودش می‌گیرد (ثبت نام و شماره → سؤال‌ها)
+        if ($this->surveyMode()) {
+            $this->processSurveyMessage($chatId, $state, $message);
+            return;
+        }
+
         if ($text === '/start') return $this->handleStart($chatId, $state, $message['from'] ?? []);
         if (isset($message['contact'])) {
             return $this->handleContact($chatId, $message['contact'], $state, $message['from'] ?? []);
@@ -138,6 +147,20 @@ class BotController extends Controller
             if ($text) return $isEditing ? $this->saveEditedAnswer($chatId, $text, $state) : $this->saveAnswerAndContinue($chatId, $text, $state);
         }
 
+        // دستیار هوش مصنوعی: فقط در حالت idle و فقط برای متن آزاد (نه دستور).
+        // وسط پر کردن فرم گزارش هرگز به اینجا نمی‌رسیم، چون شاخه‌ی بالا return می‌کند.
+        if ($state->step === 'idle' && $text !== null && trim($text) !== '' && \App\Services\Ai\AiAssistant::enabled()) {
+            if (trim($text) === '/forget') {
+                app(\App\Services\Ai\AiMemoryService::class)->forget((string) $chatId);
+                return $this->sendMessage($chatId, 'حافظه‌ی گفتگوی شما پاک شد.');
+            }
+            if (!str_starts_with(trim($text), '/')) {
+                $repName = \App\Models\Representative::find($state->representative_id)?->full_name;
+                $answer  = app(\App\Services\Ai\AiAssistant::class)->reply((string) $chatId, $text, $repName);
+                return $this->sendMessage($chatId, $answer);
+            }
+        }
+
         $this->showMainMenu($chatId);
     }
 
@@ -149,6 +172,9 @@ class BotController extends Controller
         $state  = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
 
         if (!$state || !$state->representative_id) return;
+
+        // در نظرسنجی پیام ویرایش‌شده معنایی ندارد (سؤال‌ها با دکمه جواب می‌گیرند)
+        if ($this->surveyMode()) return;
 
         // فقط در مرحله پاسخ به فیلد یا ویرایش فیلد قابل استفاده است
         if (in_array($state->step, ['answering_field', 'editing_field'])) {
@@ -180,6 +206,9 @@ class BotController extends Controller
         $data   = $callbackQuery['data'];
         $state  = BotState::where('chat_id', $chatId)->lockForUpdate()->first();
         if (!$state || !$state->representative_id) return;
+
+        // دکمه‌های منو/ماه/پیش‌نمایش در نظرسنجی وجود ندارند؛ دکمه‌ی کهنه نادیده گرفته می‌شود
+        if ($this->surveyMode() && !$this->surveyCallbackAllowed($data)) return;
 
         if ($data === 'main_start_report') {
             if ($state->step !== 'idle') { $this->sendMessage($chatId, BotText::get('warn_finish_current')); return; }
@@ -271,6 +300,8 @@ class BotController extends Controller
 
     private function handleGoBack(string $chatId, BotState $state): void
     {
+        if ($this->surveyMode()) { $this->surveyGoBack($chatId, $state); return; }
+
         $step = $state->step;
 
         // بازگشت از ماه → منوی اصلی (لغو گزارش)
@@ -807,7 +838,11 @@ class BotController extends Controller
     {
         $state->refresh();
         $field = $this->currentField($state);
-        if (!$field) { $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); return; }
+        if (!$field) {
+            // نظرسنجی پیش‌نمایش و تأیید ندارد: همان‌جا ذخیره و تشکر
+            if ($this->surveyMode()) { $this->surveyFinish($chatId, $state); return; }
+            $state->update(['step' => 'preview']); $this->showPreview($chatId, $state); return;
+        }
 
         if ($field->type === 'option') {
             $this->askOptionField($chatId, $state, $field);
@@ -825,11 +860,19 @@ class BotController extends Controller
         $options = $field->options;
         if ($options->isEmpty()) { $this->popField($state); $this->prependAlwaysChildFields($state, $field); $this->askNextField($chatId, $state); return; }
 
-        $prompt = BotText::get('field_option_header') . "\n\n🔹 *{$field->label}*";
+        $survey = $this->surveyMode();
+        $header = $survey ? $this->surveyProgressHeader($state) : BotText::get('field_option_header');
+
+        $prompt = $header . "\n\n🔹 *{$field->label}*";
         if ($field->description) $prompt .= "\n📝 _{$field->description}_";
 
-        $inlineKeyboard   = $options->map(fn($o) => [['text' => $o->label, 'callback_data' => "opt_{$o->id}"]])->toArray();
-        $inlineKeyboard[] = $this->fieldNavRow($field);
+        $inlineKeyboard = $options->map(fn($o) => [['text' => $o->label, 'callback_data' => "opt_{$o->id}"]])->toArray();
+        $navRow         = $this->fieldNavRow($field);
+        // سؤال اول نظرسنجی «بازگشت» ندارد؛ قبلش چیزی نیست
+        if ($survey && empty($state->draft_data)) {
+            $navRow = array_values(array_filter($navRow, fn($button) => $button['callback_data'] !== 'go_back'));
+        }
+        if ($navRow) $inlineKeyboard[] = $navRow;
         $msgId = $this->sendMessage($chatId, $prompt, ['inline_keyboard' => $inlineKeyboard]);
         $state->update(['last_message_id' => $msgId, 'step' => 'answering_field']);
     }
@@ -842,6 +885,7 @@ class BotController extends Controller
     {
         $option = FieldOption::with(['field', 'childFields'])->find($optionId);
         if (!$option) return;
+        if ($this->surveyMode() && !$this->surveyOptionIsCurrent($state, $option->field_id)) return;
 
         $draft   = $state->draft_data ?? [];
         $draft[] = ['field_id' => $option->field->id, 'label' => $option->field->label, 'type' => 'option', 'value' => $option->label, 'option_id' => $option->id];

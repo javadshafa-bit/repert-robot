@@ -234,6 +234,59 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="pt-4 border-t border-gray-100">
+                        <label for="bot_survey_mode" class="flex items-start gap-3 cursor-pointer">
+                            <input type="hidden" name="bot_survey_mode" value="0">
+                            <input type="checkbox"
+                                   id="bot_survey_mode"
+                                   name="bot_survey_mode"
+                                   value="1"
+                                   onchange="document.getElementById('survey-wrap').classList.toggle('hidden', !this.checked)"
+                                   {{ $settings['bot_survey_mode'] == '1' ? 'checked' : '' }}
+                                   class="mt-0.5 shrink-0 size-4 border-gray-300 rounded text-blue-600 focus:ring-blue-500">
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800">حالت نظرسنجی (برای مراسم و رویدادها)</span>
+                                <span class="block text-xs text-gray-500 mt-0.5 leading-6">
+                                    ربات برای همه باز می‌شود: هر کسی /start بزند، نام و نام خانوادگی و شماره همراهش را می‌دهد
+                                    و بلافاصله سؤال‌های فرم نظرسنجی را جواب می‌دهد — بدون منو، انتخاب ماه، دپارتمان و پیش‌نمایش.
+                                    پاسخ‌ها در «گزارش‌ها» و خروجی اکسل می‌آیند و شرکت‌کنندگان در «نمایندگان» با نام و شماره ثبت می‌شوند.
+                                    وقتی روشن است، «روش ورود»، «دسترسی آزاد» و «ترتیب مراحل» نادیده گرفته می‌شوند.
+                                </span>
+                            </span>
+                        </label>
+
+                        <div id="survey-wrap" class="mt-3 pr-7 space-y-4 {{ $settings['bot_survey_mode'] == '1' ? '' : 'hidden' }}">
+                            <div>
+                                <label for="survey_category_id" class="block text-xs font-medium text-gray-600 mb-1">فرم نظرسنجی</label>
+                                <select id="survey_category_id" name="survey_category_id"
+                                        class="py-2 px-3 block w-full sm:w-72 border border-gray-200 rounded-lg text-sm">
+                                    <option value="">— اولین دسته‌بندی فعال —</option>
+                                    @foreach($categories as $category)
+                                        <option value="{{ $category->id }}"
+                                            {{ (string) $settings['survey_category_id'] === (string) $category->id ? 'selected' : '' }}>
+                                            {{ $category->name }}{{ $category->is_active ? '' : ' (غیرفعال)' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1 leading-6">
+                                    سؤال‌ها همان فیلدهای این دسته‌بندی در فرم‌ساز هستند. نام دسته‌بندی به‌جای {title} در متن‌های نظرسنجی می‌نشیند.
+                                    اگر این دسته‌بندی را غیرفعال کنید، نظرسنجی بسته می‌شود.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label for="survey_repeat" class="block text-xs font-medium text-gray-600 mb-1">هر نفر چند بار بتواند شرکت کند؟</label>
+                                <select id="survey_repeat" name="survey_repeat"
+                                        class="py-2 px-3 block w-full sm:w-72 border border-gray-200 rounded-lg text-sm">
+                                    <option value="nightly"   {{ $settings['survey_repeat'] === 'nightly'   ? 'selected' : '' }}>هر شب یک بار</option>
+                                    <option value="once"      {{ $settings['survey_repeat'] === 'once'      ? 'selected' : '' }}>فقط یک بار</option>
+                                    <option value="unlimited" {{ $settings['survey_repeat'] === 'unlimited' ? 'selected' : '' }}>بدون محدودیت (برای آزمایش)</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">«شب» ساعت ۶ صبح به وقت تهران عوض می‌شود؛ پاسخ بعد از نیمه‌شب مال همان شب است.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="mt-6">
                     <button type="submit" class="py-2 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-green-600 text-white hover:bg-green-700">

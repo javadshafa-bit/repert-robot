@@ -2,6 +2,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Province;
 use App\Models\Setting;
 use App\Models\Tenant;
@@ -43,9 +44,13 @@ class SettingController extends Controller
             // کلید هرگز کامل به صفحه برنمی‌گردد؛ فقط نشانه‌ای که ثبت شده یا نه
             'sms_api_key_set'    => filled(Setting::get('sms_api_key')),
             'sms_template'       => Setting::get('sms_template', ''),
+            'bot_survey_mode'    => Setting::get('bot_survey_mode', '0'),
+            'survey_category_id' => Setting::get('survey_category_id', ''),
+            'survey_repeat'      => Setting::get('survey_repeat', 'nightly'),
         ];
 
-        $provinces = Province::orderBy('name')->get();
+        $provinces  = Province::orderBy('name')->get();
+        $categories = Category::orderBy('sort_order')->orderBy('id')->get(['id', 'name', 'is_active']);
 
         // وضعیت پیامک از کانتینر خوانده می‌شود، نه مستقیم از config — همان
         // چیزی را نشان می‌دهد که واقعاً هنگام ارسال استفاده خواهد شد.
@@ -57,7 +62,7 @@ class SettingController extends Controller
             'own'        => app(SmsManager::class)->source() === SmsManager::SOURCE_OWN,
         ];
 
-        return view('admin.settings.index', compact('settings', 'flowSteps', 'tenant', 'provinces', 'smsStatus'));
+        return view('admin.settings.index', compact('settings', 'flowSteps', 'tenant', 'provinces', 'categories', 'smsStatus'));
     }
 
     public function update(Request $request)
@@ -72,6 +77,9 @@ class SettingController extends Controller
             'sms_source'        => 'nullable|string|in:platform,own',
             'sms_api_key'       => 'nullable|string|max:255',
             'sms_template'      => 'nullable|string|max:100',
+            'bot_survey_mode'    => 'nullable|boolean',
+            'survey_category_id' => ['nullable', TenantRule::exists('categories')],
+            'survey_repeat'      => 'nullable|string|in:nightly,once,unlimited',
         ]);
 
         if ($request->filled('bot_token')) {
@@ -83,6 +91,10 @@ class SettingController extends Controller
         Setting::set('open_access_phone_mode', $request->input('open_access_phone_mode', 'none'));
         Setting::set('bot_auth_method', $request->input('bot_auth_method', 'contact'));
         Setting::set('guest_province_id', (string) ($request->input('guest_province_id') ?: ''));
+
+        Setting::set('bot_survey_mode', $request->boolean('bot_survey_mode') ? '1' : '0');
+        Setting::set('survey_category_id', (string) ($request->input('survey_category_id') ?: ''));
+        Setting::set('survey_repeat', $request->input('survey_repeat') ?: 'nightly');
 
         Setting::set('sms_source', $request->input('sms_source', SmsManager::SOURCE_PLATFORM));
         Setting::set('sms_template', (string) ($request->input('sms_template') ?: ''));

@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\Tenant;
 use App\Support\Sms\SmsManager;
 use App\Support\Sms\SmsSender;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -39,9 +41,45 @@ class AppServiceProvider extends ServiceProvider
     private function configureRateLimiters(): void
     {
         RateLimiter::for('bot-webhook', function (Request $request) {
-            return Limit::perMinute(300)->by(
-                optional($request->route('tenant'))->id ?? $request->ip()
+            $tenant = self::webhookTenant($request);
+
+            return Limit::perMinute(self::webhookLimitFor($tenant))->by(
+                optional($tenant)->id ?? $request->ip()
             );
         });
+    }
+
+    /**
+     * throttle در اولویت میدلورها پیش از SubstituteBindings اجرا می‌شود، پس این‌جا
+     * پارامتر tenant هنوز همان رشته‌ی webhook_secret است نه مدل. بدون این تبدیل،
+     * کلید عملاً IP بود و همه‌ی سازمان‌ها یک سقف مشترک داشتند.
+     */
+    private static function webhookTenant(Request $request): ?Tenant
+    {
+        $param = $request->route('tenant');
+
+        if ($param instanceof Tenant) return $param;
+        if (!is_string($param) || $param === '') return null;
+
+        return Tenant::where('webhook_secret', $param)->first();
+    }
+
+    /**
+     * سقف هر دقیقه‌ی وبهوک یک سازمان.
+     *
+     * ربات نظرسنجی مراسم در چند دقیقه‌ی بین‌پرده/پایان برنامه صدها نفر را هم‌زمان
+     * می‌گیرد و هر نفر حدود ده آپدیت می‌فرستد (شروع، نام، شماره، هر سؤال)؛ سقف ۳۰۰
+     * آن‌جا پیام‌ها را با 429 پس می‌زد. کوئری خام چون TenantContext هنوز ست نشده.
+     */
+    private static function webhookLimitFor(?Tenant $tenant): int
+    {
+        if (!$tenant) return 300;
+
+        $survey = DB::table('settings')
+            ->where('tenant_id', $tenant->id)
+            ->where('key', 'bot_survey_mode')
+            ->value('value');
+
+        return $survey === '1' ? 3000 : 300;
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use Illuminate\Support\Collection;
+use Morilog\Jalali\Jalalian;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
@@ -45,7 +46,7 @@ class ReportsExport implements FromArray, WithHeadings, WithTitle, WithStyles
 
         // هدرهای ثابت + هدرهای داینامیک
         $this->headings = array_merge(
-            ['ردیف', 'نماینده', 'استان', 'دپارتمان', 'دسته‌بندی', 'ماه', 'تاریخ ثبت'],
+            ['ردیف', 'نماینده', 'شماره تماس', 'استان', 'دپارتمان', 'دسته‌بندی', 'ماه', 'تاریخ ثبت', 'زمان ثبت (شمسی، تهران)'],
             $allLabels
         );
 
@@ -71,11 +72,16 @@ class ReportsExport implements FromArray, WithHeadings, WithTitle, WithStyles
             $row = [
                 $rowNum++,
                 ($report->representative->first_name ?? '') . ' ' . ($report->representative->last_name ?? ''),
+                $report->representative->phone_number ?? '',
                 $report->representative->province->name ?? '',
                 $report->department->name ?? '',
                 $report->category->name ?? '',
                 $report->jalali_month ?? '',
                 $report->created_at?->format('Y-m-d') ?? '',
+                // برای نظرسنجی‌های شبانه: تاریخ میلادیِ UTC بعد از نیمه‌شب تهران یک روز عقب است
+                $report->created_at
+                    ? Jalalian::fromCarbon($report->created_at->copy()->setTimezone('Asia/Tehran'))->format('Y/m/d H:i')
+                    : '',
             ];
 
             foreach ($allLabels as $label) {

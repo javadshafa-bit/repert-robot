@@ -127,6 +127,21 @@ database/migrations/    — تاریخچه کامل migrations
 زیرفیلدهای شرطی (`parent_option_id`) → بعد از انتخاب option اضافه می‌شوند  
 زیرفیلدهای همیشگی (`parent_field_id`) → همیشه بعد از فیلد والد  
 
+### حالت نظرسنجی (`bot_survey_mode = 1`)
+برای مراسم/رویدادی که مخاطبش ثبت‌نام قبلی ندارد. منطقش در trait
+`App\Http\Controllers\Api\Concerns\SurveyFlow` است و `BotController` فقط در چند نقطه به آن می‌سپارد
+(`processMessage`، `processCallback`، `handleGoBack`، `askNextField`، `askOptionField`).
+
+- جریان: `/start` → نام و نام خانوادگی (متن، دست‌کم دو کلمه) → شماره (دکمه‌ی contact یا تایپ)
+  → فیلدهای دسته‌ی `survey_category_id` یکی‌یکی → ذخیره‌ی مستقیم در `reports` (بدون پیش‌نمایش) → تشکر.
+- شرکت‌کننده یک `Representative` با نام و شماره‌ی واقعی است؛ شماره per-tenant یکتاست، پس گوشی دوم رکورد تکراری نمی‌سازد.
+- `survey_repeat`: `nightly` (پیش‌فرض) | `once` | `unlimited`. «شب» ساعت ۶ صبح تهران عوض می‌شود.
+- stepهای تازه‌ی `bot_states`: `survey_ask_name`، `survey_ask_phone`، `survey_done` (نام موقت در `auth_data`).
+- متن‌ها در گروه `survey` از `BotText`؛ `{title}` = نام دسته‌ی نظرسنجی.
+- سقف وبهوک سازمانِ در حالت نظرسنجی ۳۰۰۰ در دقیقه است (بقیه ۳۰۰) — `AppServiceProvider::webhookLimitFor`.
+- راه‌اندازی آماده‌ی «تئاتر فاطمیه»: `php artisan survey:fatemiyeh {tenant-id|email}` (تکرارش امن است).
+- وقتی خاموش است، رفتار ربات دقیقاً همان قبلی است.
+
 ## چندمستأجری (Multi-tenant)
 سامانه SaaS است: هر سازمان یک رکورد در `tenants` دارد با ربات، داده و پنل مستقل.
 
@@ -150,7 +165,7 @@ database/migrations/    — تاریخچه کامل migrations
   روی سرور، بلوک `bot.webhook.legacy` از `routes/web.php` حذف شود.**
 - **دستورهای کمکی:** `tenants:create-platform-admin`، `tenants:refresh-webhook`
   (اگر `APP_URL` عمومی و https نباشد خودش را متوقف می‌کند)، `tenants:seed-tree {tenant}`،
-  `db:import-sqlite {path} --tenant=N`، `subscriptions:expire`.
+  `db:import-sqlite {path} --tenant=N`، `subscriptions:expire`، `survey:fatemiyeh {tenant}`.
 
 ## اشتراک و پرداخت
 - **وضعیت‌های `tenants.status`:**
